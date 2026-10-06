@@ -133,25 +133,6 @@ object RapidoAdapter {
         return false
     }
 
-    // RAPIDO_CUSTOMER_EXTRA_V1
-    // "Customer added ₹10 extra" is informational.
-    // Do NOT treat it as another fare and do NOT add it again.
-    private fun isCustomerAddedExtraFareLine(text: String): Boolean {
-        val lower = text.lowercase().trim()
-
-        if (!lower.contains("customer")) {
-            return false
-        }
-
-        val isExtraInfo =
-            lower.contains("added") ||
-                lower.contains("extra") ||
-                lower.contains("tip") ||
-                lower.contains("bonus")
-
-        return isExtraInfo &&
-            RUPEE_AMOUNT_REGEX.matcher(text).find()
-    }
     /**
      * Checks whether an accessibility node is inside a "Today's Earnings" or "Earnings" container.
      */
@@ -460,10 +441,7 @@ object RapidoAdapter {
         val verifiedPairs = mutableListOf<Triple<Float, Float, Float>>()
 
         for (i in texts.indices) {
-            if (
-                isEarningsContext(texts, i) ||
-                isCustomerAddedExtraFareLine(texts[i])
-            ) {
+            if (isEarningsContext(texts, i)) {
                 continue
             }
 
@@ -559,11 +537,7 @@ object RapidoAdapter {
         if (isBundleOrder) {
             val bundleFareAmounts = mutableListOf<Float>()
             for (i in texts.indices) {
-                if (
-                    isEarningsContext(texts, i) ||
-                    isCustomerAddedExtraFareLine(texts[i])
-                ) continue
-
+                if (isEarningsContext(texts, i)) continue
                 val bundleMatcher = rupeeMatcher.matcher(texts[i])
                 while (bundleMatcher.find()) {
                     bundleMatcher.group(1)?.toFloatOrNull()?.let {
@@ -1344,240 +1318,54 @@ object RapidoAdapter {
         return list
     }
 
-    // RAPIDO_ACCEPT_CARD_FARE_V1
-    // Live fare must come from the SAME Rapido order-card hierarchy
-    // that owns the verified Accept button.
-    private fun isAcceptCardFareUnambiguous(
-        node: AccessibilityNodeInfo,
-        data: RapidoOrderData
-    ): Boolean {
-        if (data.isBundledOrder) return true
-
-        val entries = mutableListOf<TextNodeEntry>()
-        collectEntries(
-            node,
-            entries,
-            node.packageName?.toString()
-        )
-
-        val texts =
-            entries
-                .filter { entry ->
-                    val pkg = entry.packageName.orEmpty()
-                    !isSmartDrivoPackage(pkg) &&
-                        (
-                            pkg.isEmpty() ||
-                            isRapidoPackage(pkg) ||
-                            pkg == "com.rapido.passenger"
-                        )
-                }
-                .map { it.text }
-
-        val fareLines =
-            texts.filterIndexed { index, line ->
-                !isEarningsContext(texts, index) &&
-                    !isCustomerAddedExtraFareLine(line) &&
-                    RUPEE_AMOUNT_REGEX.matcher(line).find()
-            }
-
-        if (fareLines.isEmpty()) return false
-        if (fareLines.size == 1) return true
-
-        val amounts = mutableListOf<Float>()
-
-        fareLines.forEach { line ->
-            val matcher = RUPEE_AMOUNT_REGEX.matcher(line)
-
-            while (matcher.find()) {
-                matcher.group(1)
-                    ?.toFloatOrNull()
-                    ?.takeIf { it > 0f }
-                    ?.let { amounts += it }
-            }
-        }
-
-        // Same fare duplicated by Android Accessibility is safe.
-        val distinctAmounts =
-            amounts
-                .map { kotlin.math.round(it * 100f).toInt() }
-                .distinct()
-
-        if (distinctAmounts.size == 1) {
-            return true
-        }
-
-        // Valid split base + tip accessibility nodes:
-        // "₹83" followed by "+₹26".
-        if (
-            fareLines.size == 2 &&
-            Regex(
-                """^\s*\+\s*₹?\s*[0-9]+(?:\.[0-9]+)?\s*$"""
-            ).matches(fareLines[1])
-        ) {
-            return true
-        }
-
-        Log.w(
-            TAG,
-            "RAPIDO FARE GUARD: multiple different ₹ amounts inside one " +
-                "candidate container: $fareLines"
-        )
-
-        return false
-    }
-
-    private fun extractOrderDataBoundToAcceptCard(
-        acceptNode: AccessibilityNodeInfo
-    ): RapidoOrderData? {
-        var current: AccessibilityNodeInfo? = acceptNode
-        var depth = 0
-        var ambiguousFareSeen = false
-
-        while (current != null && depth <= 10) {
-            val data =
-                extractOrderData(
-                    root = current,
-                    skipHomeCheck = true,
-                    skipPickupAddress = true
-                )
-
-            val hasFare =
-                data.totalFare > 0f
-
-            val hasPickup =
-                data.hasNearby ||
-                    (
-                        data.pickupKm != null &&
-                            data.pickupKm > 0f
-                    )
-
-            val hasDrop =
-                data.dropKm != null &&
-                    data.dropKm > 0f
-
-            if (hasFare && hasPickup && hasDrop) {
-                if (data.isBundledOrder) {
-                    Log.i(
-                        TAG,
-                        "RAPIDO FARE BOUND: bundle card fare=₹${data.totalFare}"
-                    )
-                    return data
-                }
-
-                val unambiguous =
-                    isAcceptCardFareUnambiguous(
-                        current,
-                        data
-                    )
-
-                if (!ambiguousFareSeen && unambiguous) {
-                    Log.i(
-                        TAG,
-                        "RAPIDO FARE BOUND: same Accept card fare=₹${data.totalFare}, depth=$depth"
-                    )
-                    return data
-                }
-
-                if (!unambiguous) {
-                    ambiguousFareSeen = true
-                }
-            }
-
-            current = current.parent
-            depth++
-        }
-
-        Log.w(
-            TAG,
-            "RAPIDO FARE GUARD: exact fare could not be safely bound " +
-                "to the detected Accept card. Waiting for a cleaner event."
-        )
-
-        return null
-    }
-
     /**
-     * Validates a genuine Rapido live order.
-     * Fare/pickup/drop must belong to the SAME card hierarchy
-     * as the verified Accept button.
+     * Requirement 1, 2, 3, 4:
+     * Validates that a genuine Rapido order popup is visible on screen.
+     * Must have ALL of these together:
+     * 1. A fare amount (₹ symbol with number) that is NOT inside "Today's Earnings" or "Earnings" container
+     * 2. A pickup distance in km (e.g. "0.4 km") OR "Nearby"
+     * 3. An "Accept" or "ACCEPT" button visible on screen
+     *
+     * In addition:
+     * - If the root node contains "Today's Earnings" or "ON DUTY" or "Blue Performance" -> HOME SCREEN, skip completely.
      */
     fun validateRapidoOrderPopup(root: AccessibilityNodeInfo?): RapidoPopupValidation {
         if (root == null) {
-            return RapidoPopupValidation(
-                isValid = false,
-                failureReason = "Null root node"
-            )
+            return RapidoPopupValidation(isValid = false, failureReason = "Null root node")
         }
-
         val pkg = root.packageName?.toString().orEmpty()
-
         if (isSmartDrivoPackage(pkg)) {
+            return RapidoPopupValidation(isValid = false, failureReason = "SmartDrivo UI package")
+        }
+
+        // Requirement 3: Check if root contains "Today's Earnings" or "ON DUTY" or "Blue Performance"
+        if (isRapidoHomeScreen(root)) {
             return RapidoPopupValidation(
                 isValid = false,
-                failureReason = "SmartDrivo UI package"
+                failureReason = "Home screen detected ('Today's Earnings' / 'ON DUTY' / 'Blue Performance')"
             )
         }
 
-        // RAPIDO_REDUNDANT_SCAN_SPEED_V1
-        // Search the verified Accept target first. A genuine offer still MUST
-        // pass same-card fare + pickup + drop validation below.
-        // Only perform the expensive Home-screen scan when Accept is absent.
-        val acceptBtn =
-            findAcceptButton(root)
-
-        if (acceptBtn == null) {
-            if (isRapidoHomeScreen(root)) {
-                return RapidoPopupValidation(
-                    isValid = false,
-                    failureReason =
-                        "Home screen detected ('Today's Earnings' / 'ON DUTY' / 'Blue Performance')"
-                )
-            }
-
-            return RapidoPopupValidation(
-                isValid = false,
-                failureReason =
-                    "Missing 'Accept' or 'ACCEPT' button"
-            )
-        }
-
-        val bounds = Rect()
-        acceptBtn.node.getBoundsInScreen(bounds)
-
-        if (
-            bounds.width() <= 0 ||
-            bounds.height() <= 0
-        ) {
-            return RapidoPopupValidation(
-                isValid = false,
-                failureReason =
-                    "Accept button is not visible on screen (zero dimensions)"
-            )
-        }
-
-        // Critical accuracy rule:
-        // NEVER take a fare from another visible/background Rapido card.
+        // RAPIDO_TURBO_DROP_ONLY_V4
+        // Parse only once. Pickup street/address is intentionally skipped.
         val orderData =
-            extractOrderDataBoundToAcceptCard(
-                acceptBtn.node
+            extractOrderData(
+                root = root,
+                skipHomeCheck = true,
+                skipPickupAddress = true
             )
-                ?: return RapidoPopupValidation(
-                    isValid = false,
-                    acceptButton = acceptBtn,
-                    failureReason =
-                        "Exact fare could not be safely matched to this Accept card"
-                )
 
+        // Requirement 1a: Fare amount outside earnings container
         if (orderData.totalFare <= 0f) {
             return RapidoPopupValidation(
                 isValid = false,
-                acceptButton = acceptBtn,
-                failureReason =
-                    "Missing valid fare on detected Accept card",
+                failureReason = "Missing valid fare amount outside earnings container",
                 orderData = orderData
             )
         }
 
+        // Requirement 1b: A pickup distance in km OR "Nearby"
+        // Reuse the parsed snapshot instead of scanning the tree again.
         val hasNearby =
             orderData.hasNearby
 
@@ -1589,9 +1377,33 @@ object RapidoAdapter {
             return RapidoPopupValidation(
                 isValid = false,
                 fare = orderData.totalFare,
-                acceptButton = acceptBtn,
-                failureReason =
-                    "Missing pickup distance on detected Accept card",
+                failureReason = "Missing pickup distance in km or 'Nearby'",
+                orderData = orderData
+            )
+        }
+
+        // Requirement 1c: An "Accept" or "ACCEPT" button visible on screen
+        val acceptBtn = findAcceptButton(root)
+        if (acceptBtn == null) {
+            return RapidoPopupValidation(
+                isValid = false,
+                fare = orderData.totalFare,
+                pickupDistKm = orderData.pickupKm,
+                hasNearby = hasNearby,
+                failureReason = "Missing 'Accept' or 'ACCEPT' button",
+                orderData = orderData
+            )
+        }
+
+        val bounds = Rect()
+        acceptBtn.node.getBoundsInScreen(bounds)
+        if (bounds.width() <= 0 || bounds.height() <= 0) {
+            return RapidoPopupValidation(
+                isValid = false,
+                fare = orderData.totalFare,
+                pickupDistKm = orderData.pickupKm,
+                hasNearby = hasNearby,
+                failureReason = "Accept button is not visible on screen (zero dimensions)",
                 orderData = orderData
             )
         }
@@ -1605,6 +1417,7 @@ object RapidoAdapter {
             orderData = orderData
         )
     }
+
     /**
      * Text-based validation helper for testing.
      */

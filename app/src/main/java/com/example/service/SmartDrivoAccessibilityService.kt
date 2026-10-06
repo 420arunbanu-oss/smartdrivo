@@ -303,6 +303,9 @@ class SmartDrivoAccessibilityService : AccessibilityService() {
 
     @Volatile
     private var lastRapidoEventDispatchAt = 0L
+
+
+
     @Volatile
     private var activeRapidoPopupOrderId: String? = null
 
@@ -321,7 +324,7 @@ class SmartDrivoAccessibilityService : AccessibilityService() {
 
                     Log.i(
                         TAG,
-                        "Γû╢∩╕Å MASTER ON ΓÇö SmartDrivo monitoring enabled"
+                        "▶️ MASTER ON — SmartDrivo monitoring enabled"
                     )
                 } else {
                     pauseAllLiveOrderWork()
@@ -390,7 +393,7 @@ private val processingTimeoutRunnable = Runnable {
             val notification = NotificationHelper.buildNotification(
                 context = applicationContext,
                 title = "SmartDrivo Active",
-                text = "Γ£à SmartDrivo Active ΓÇö Monitoring orders"
+                text = "✅ SmartDrivo Active — Monitoring orders"
             )
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -476,7 +479,7 @@ private val processingTimeoutRunnable = Runnable {
 
         Log.i(
             TAG,
-            "ΓÅ╕∩╕Å MASTER OFF ΓÇö all SmartDrivo live order work stopped"
+            "⏸️ MASTER OFF — all SmartDrivo live order work stopped"
         )
     }
 
@@ -552,7 +555,7 @@ private val processingTimeoutRunnable = Runnable {
 
     private val resetClickInProgressRunnable = Runnable {
         isClickInProgress = false
-        Log.d(TAG, "ΓÅ▒∩╕Å [Fix 3] isClickInProgress reset to false (3s cooldown expired)")
+        Log.d(TAG, "⏱️ [Fix 3] isClickInProgress reset to false (3s cooldown expired)")
     }
 
     // Fix 4 - General:
@@ -571,7 +574,7 @@ private val processingTimeoutRunnable = Runnable {
         if (!preferencesManager.isAutoAcceptEnabled) {
             Log.d(
                 TAG,
-                "ΓÅ╕∩╕Å Click blocked because Auto Accept master is OFF"
+                "⏸️ Click blocked because Auto Accept master is OFF"
             )
             return false
         }
@@ -581,13 +584,13 @@ private val processingTimeoutRunnable = Runnable {
         // Fix 4: Check if waiting after rate limit penalty (5-second wait)
         if (now < clickBlockedUntilTimestamp) {
             val waitRemaining = clickBlockedUntilTimestamp - now
-            Log.w(TAG, "≡ƒÜ½ [Fix 4 Rate Limit] All clicks halted! Must wait 5s cooldown (remaining: ${waitRemaining}ms)")
+            Log.w(TAG, "🚫 [Fix 4 Rate Limit] All clicks halted! Must wait 5s cooldown (remaining: ${waitRemaining}ms)")
             return false
         }
 
         // Fix 3: While isClickInProgress = true, skip ALL new clicks
         if (isClickInProgress) {
-            Log.w(TAG, "≡ƒÜ½ [Fix 3 Cooldown] Click skipped: isClickInProgress is TRUE (waiting 3s cooldown)")
+            Log.w(TAG, "🚫 [Fix 3 Cooldown] Click skipped: isClickInProgress is TRUE (waiting 3s cooldown)")
             return false
         }
 
@@ -596,7 +599,7 @@ private val processingTimeoutRunnable = Runnable {
         if (recentClickTimestamps.size >= 3) {
             clickBlockedUntilTimestamp = now + 5000L
             recentClickTimestamps.clear()
-            Log.e(TAG, "≡ƒÜ¿ [Fix 4 Penalty] Service clicked 3+ times in 2 seconds! Stopping all clicks for 5 seconds.")
+            Log.e(TAG, "🚨 [Fix 4 Penalty] Service clicked 3+ times in 2 seconds! Stopping all clicks for 5 seconds.")
             return false
         }
 
@@ -820,9 +823,9 @@ private val processingTimeoutRunnable = Runnable {
 
     /**
      * Fresh direct filter check without using PreferencesManager class or any cached variable:
-     * - If No-Go area matched ΓåÆ OrderStatus.REJECTED
-     * - All other filter failures (fare, pickup km, drop km) ΓåÆ OrderStatus.IGNORED
-     * - All filters passed ΓåÆ OrderStatus.ACCEPTED
+     * - If No-Go area matched → OrderStatus.REJECTED
+     * - All other filter failures (fare, pickup km, drop km) → OrderStatus.IGNORED
+     * - All filters passed → OrderStatus.ACCEPTED
      *
      * Respects Filter Mode:
      * - If filterMode == "fare_only" -> skip pickup and drop distance checks completely
@@ -871,7 +874,7 @@ private val processingTimeoutRunnable = Runnable {
                 if (dropMatches.isNotEmpty()) {
                     val fareText = candidate.fare
                         ?.takeIf { it > 0f }
-                        ?.let { "Γé╣${it.toInt()}" }
+                        ?.let { "₹${it.toInt()}" }
                         ?: "N/A"
 
                     val pickupKmText = candidate.pickupDistKm
@@ -896,7 +899,7 @@ private val processingTimeoutRunnable = Runnable {
                         append("\nWhy rejected: destination/drop area is blocked")
                     }
 
-                    Log.w(TAG, "Γ¥î [Direct Filter REJECT] $reason")
+                    Log.w(TAG, "❌ [Direct Filter REJECT] $reason")
                     return DirectFilterResult(OrderStatus.REJECTED, reason)
                 }
             }
@@ -936,9 +939,9 @@ private val processingTimeoutRunnable = Runnable {
 
         Log.i(
             TAG,
-            "ΓÜí Direct SharedPreferences Evaluation: " +
-            "[filterMode=$filterMode, minFare=Γé╣${direct.minFare}, maxFare=Γé╣${direct.maxFare}, maxPickup=${direct.maxPickupKm}km, maxDrop=${direct.maxDropKm}km] vs " +
-            "[Candidate: fare=Γé╣$fare, pickup=${pickup}km, drop=${drop}km]"
+            "⚡ Direct SharedPreferences Evaluation: " +
+            "[filterMode=$filterMode, minFare=₹${direct.minFare}, maxFare=₹${direct.maxFare}, maxPickup=${direct.maxPickupKm}km, maxDrop=${direct.maxDropKm}km] vs " +
+            "[Candidate: fare=₹$fare, pickup=${pickup}km, drop=${drop}km]"
         )
 
         val checkDistance = filterMode == "distance_only" || filterMode == "both"
@@ -961,10 +964,10 @@ private val processingTimeoutRunnable = Runnable {
 
         if (checkFare && fare != null && fare > 0f) {
             if (direct.minFare > 0f && fare < direct.minFare) {
-                failureReasons += "Fare Γé╣${fare.toInt()} < min Γé╣${direct.minFare.toInt()}"
+                failureReasons += "Fare ₹${fare.toInt()} < min ₹${direct.minFare.toInt()}"
             }
             if (direct.maxFare > 0f && fare > direct.maxFare) {
-                failureReasons += "Fare Γé╣${fare.toInt()} > max Γé╣${direct.maxFare.toInt()}"
+                failureReasons += "Fare ₹${fare.toInt()} > max ₹${direct.maxFare.toInt()}"
             }
         }
 
@@ -983,7 +986,7 @@ private val processingTimeoutRunnable = Runnable {
                 fare < direct.secondaryBothMinFare
             ) {
                 secondaryFailureReasons +=
-                    "Fare Γé╣${fare.toInt()} < min Γé╣${direct.secondaryBothMinFare.toInt()}"
+                    "Fare ₹${fare.toInt()} < min ₹${direct.secondaryBothMinFare.toInt()}"
             }
 
             if (pickup == null) {
@@ -1020,7 +1023,7 @@ private val processingTimeoutRunnable = Runnable {
         ) {
             Log.i(
                 TAG,
-                "Γ£à [Filter OR MATCH] Home failed, Filter 2 matched"
+                "✅ [Filter OR MATCH] Home failed, Filter 2 matched"
             )
 
             return DirectFilterResult(
@@ -1037,21 +1040,21 @@ private val processingTimeoutRunnable = Runnable {
             }
 
             val orderParts = mutableListOf<String>()
-            if (fare != null && fare > 0f) orderParts += "Fare Γé╣${fare.toInt()}"
+            if (fare != null && fare > 0f) orderParts += "Fare ₹${fare.toInt()}"
             orderParts += "Pickup ${pickup?.let { "%.1f km".format(it) } ?: "N/A"}"
             orderParts += "Trip ${drop?.let { "%.1f km".format(it) } ?: "N/A"}"
 
             val limitParts = mutableListOf<String>()
             if (checkFare) {
-                val minText = if (direct.minFare > 0f) "Γé╣${direct.minFare.toInt()}" else "OFF"
-                val maxText = if (direct.maxFare > 0f) "Γé╣${direct.maxFare.toInt()}" else "OFF"
+                val minText = if (direct.minFare > 0f) "₹${direct.minFare.toInt()}" else "OFF"
+                val maxText = if (direct.maxFare > 0f) "₹${direct.maxFare.toInt()}" else "OFF"
                 limitParts += "Fare $minText-$maxText"
             }
             if (checkDistance) {
                 val pickupLimit = if (direct.maxPickupKm > 0f) "${"%.1f".format(direct.maxPickupKm)} km" else "OFF"
                 val dropLimit = if (direct.maxDropKm > 0f) "${"%.1f".format(direct.maxDropKm)} km" else "OFF"
-                limitParts += "Pickup Γëñ $pickupLimit"
-                limitParts += "Trip Γëñ $dropLimit"
+                limitParts += "Pickup ≤ $pickupLimit"
+                limitParts += "Trip ≤ $dropLimit"
             }
 
             val reason = buildString {
@@ -1073,16 +1076,16 @@ private val processingTimeoutRunnable = Runnable {
                 }
             }
 
-            Log.w(TAG, "ΓÅ¡∩╕Å [Direct Filter IGNORED] $reason")
+            Log.w(TAG, "⏭️ [Direct Filter IGNORED] $reason")
             return DirectFilterResult(OrderStatus.IGNORED, reason)
         }
-        // All filters passed ΓåÆ OrderStatus.ACCEPTED
+        // All filters passed → OrderStatus.ACCEPTED
         return DirectFilterResult(OrderStatus.ACCEPTED, "All direct filters passed")
     }
 
     /**
      * Fix 1 - SpeculativeClick helper:
-     * Screen contains fare text with Γé╣ symbol.
+     * Screen contains fare text with ₹ symbol.
      */
     private fun screenContainsRupeeText(root: AccessibilityNodeInfo?): Boolean {
         if (root == null) return false
@@ -1093,9 +1096,9 @@ private val processingTimeoutRunnable = Runnable {
             val node = queue.removeFirst()
             count++
             val txt = node.text?.toString().orEmpty()
-            if (txt.contains("Γé╣")) return true
+            if (txt.contains("₹")) return true
             val desc = node.contentDescription?.toString().orEmpty()
-            if (desc.contains("Γé╣")) return true
+            if (desc.contains("₹")) return true
             for (i in 0 until node.childCount) {
                 node.getChild(i)?.let { queue.add(it) }
             }
@@ -1119,7 +1122,7 @@ private val processingTimeoutRunnable = Runnable {
 
     private fun setOlaState(newState: OlaState) {
         currentOlaState = newState
-        Log.i(TAG, "≡ƒÜû [Ola Auto-Accept State] $newState")
+        Log.i(TAG, "🚖 [Ola Auto-Accept State] $newState")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -1233,11 +1236,10 @@ private val processingTimeoutRunnable = Runnable {
 
             lastRapidoEventDispatchAt = now
 
-
             Log.d("SmartDrivo", "Rapido event received: ${event.eventType}")
             Log.i(
                 TAG,
-                "├░┼╕ΓÇ£┬Ñ [Rapido] eventPkg='$eventPkg', activePkg='$activeRootPkg', " +
+                "ðŸ“¥ [Rapido] eventPkg='$eventPkg', activePkg='$activeRootPkg', " +
                     "type=${event.eventType}, AutoAcceptEnabled=${preferencesManager.isAutoAcceptEnabled}"
             )
         } else {
@@ -1389,7 +1391,7 @@ private val processingTimeoutRunnable = Runnable {
                 var score = 0
 
 
-                if (fullText.contains("Γé╣")) {
+                if (fullText.contains("₹")) {
                     score += 100
                 }
 
@@ -1479,9 +1481,6 @@ private val processingTimeoutRunnable = Runnable {
             val candidateRoots =
                 mutableListOf<AccessibilityNodeInfo>()
 
-            val seenRapidoWindows =
-                mutableSetOf<String>()
-
             fun addCandidateRoot(node: AccessibilityNodeInfo?) {
                 if (node == null) return
 
@@ -1494,21 +1493,7 @@ private val processingTimeoutRunnable = Runnable {
                         .lowercase(Locale.ROOT)
 
                 if (isRapidoPackage(pkg) || pkg == "com.rapido.passenger") {
-                    val windowId =
-                        try {
-                            top.windowId
-                        } catch (_: Exception) {
-                            -1
-                        }
-
-                    val key =
-                        if (windowId >= 0) {
-                            "$pkg|window:$windowId"
-                        } else {
-                            "$pkg|node:${System.identityHashCode(top)}"
-                        }
-
-                    if (seenRapidoWindows.add(key)) {
+                    if (candidateRoots.none { it === top }) {
                         candidateRoots.add(top)
                     }
                 }
@@ -1524,7 +1509,7 @@ private val processingTimeoutRunnable = Runnable {
             } catch (e: Exception) {
                 Log.w(
                     TAG,
-                    "ΓÜá∩╕Å [Rapido] Unable to scan accessibility windows: ${e.message}"
+                    "⚠️ [Rapido] Unable to scan accessibility windows: ${e.message}"
                 )
             }
 
@@ -1547,8 +1532,8 @@ private val processingTimeoutRunnable = Runnable {
                 lastValidRapidoPopupAt = System.currentTimeMillis()
                 Log.i(
                     TAG,
-                    "≡ƒÄ» [Rapido] Genuine order popup detected across windows: " +
-                        "fare=Γé╣${validatedPopup.fare}, " +
+                    "🎯 [Rapido] Genuine order popup detected across windows: " +
+                        "fare=₹${validatedPopup.fare}, " +
                         "pickupKm=${validatedPopup.pickupDistKm}, " +
                         "nearby=${validatedPopup.hasNearby}, " +
                         "rootsScanned=${candidateRoots.size}"
@@ -1584,7 +1569,7 @@ private val processingTimeoutRunnable = Runnable {
                 }
                 Log.d(
                     TAG,
-                    "≡ƒÅá Rapido home screen detected and NO valid order popup " +
+                    "🏠 Rapido home screen detected and NO valid order popup " +
                         "was found across ${candidateRoots.size} Rapido root(s). " +
                         "Skipping."
                 )
@@ -1595,7 +1580,7 @@ private val processingTimeoutRunnable = Runnable {
 
             Log.d(
                 TAG,
-                "Γä╣∩╕Å [Rapido] No genuine order popup found across " +
+                "ℹ️ [Rapido] No genuine order popup found across " +
                     "${candidateRoots.size} Rapido root(s). " +
                     "Need fare + pickup distance + Accept button."
             )
@@ -1616,7 +1601,7 @@ private val processingTimeoutRunnable = Runnable {
      * Fix 1 - SpeculativeClick:
      * Remove speculative click completely OR only trigger it when BOTH conditions are true:
      * - Package is com.ubercab
-     * - Screen contains fare text with Γé╣ symbol
+     * - Screen contains fare text with ₹ symbol
      * Never fire speculative click on any other screen.
      */
     private fun performUberSpeculativeClick(root: AccessibilityNodeInfo?, pkgName: String = "com.ubercab") {
@@ -1625,13 +1610,13 @@ private val processingTimeoutRunnable = Runnable {
         val pkg = root.packageName?.toString() ?: pkgName
         // Condition 1: Package is com.ubercab
         if (!isUberPackage(pkg)) {
-            Log.d(TAG, "ΓÜí [Fix 1 SpeculativeClick] Skipped: package is not com.ubercab ($pkg)")
+            Log.d(TAG, "⚡ [Fix 1 SpeculativeClick] Skipped: package is not com.ubercab ($pkg)")
             return
         }
 
-        // Condition 2: Screen contains fare text with Γé╣ symbol
+        // Condition 2: Screen contains fare text with ₹ symbol
         if (!screenContainsRupeeText(root)) {
-            Log.d(TAG, "ΓÜí [Fix 1 SpeculativeClick] Skipped: screen does not contain Γé╣ symbol")
+            Log.d(TAG, "⚡ [Fix 1 SpeculativeClick] Skipped: screen does not contain ₹ symbol")
             return
         }
 
@@ -1652,9 +1637,9 @@ private val processingTimeoutRunnable = Runnable {
         val specX = screenWidth * 0.65f
         val specY = screenHeight * 0.80f
 
-        Log.i(TAG, "ΓÜí [Fix 1 SpeculativeClick] BOTH CONDITIONS MET (com.ubercab + Γé╣ fare). Tapping at ($specX, $specY) [65% width, 80% height]")
+        Log.i(TAG, "⚡ [Fix 1 SpeculativeClick] BOTH CONDITIONS MET (com.ubercab + ₹ fare). Tapping at ($specX, $specY) [65% width, 80% height]")
         simulateTapGesture(specX, specY, isInternalFallback = true) { success ->
-            Log.i(TAG, "ΓÜí [SpeculativeClick] Gesture completed, success=$success")
+            Log.i(TAG, "⚡ [SpeculativeClick] Gesture completed, success=$success")
         }
     }
 
@@ -1775,7 +1760,7 @@ private val processingTimeoutRunnable = Runnable {
 
         var score = 0
 
-        if (fullText.contains("Γé╣")) {
+        if (fullText.contains("₹")) {
             score += 50
         }
 
@@ -1954,7 +1939,7 @@ private val processingTimeoutRunnable = Runnable {
 
 
         // Real Uber offer signature.
-        if (!fullText.contains("Γé╣")) {
+        if (!fullText.contains("₹")) {
             return false
         }
 
@@ -2167,7 +2152,7 @@ private val processingTimeoutRunnable = Runnable {
 
 
         val hasFareCurrency =
-            fullText.contains("Γé╣") ||
+            fullText.contains("₹") ||
             Regex(
                 """(?i)\b(?:rs\.?|inr)\s*[0-9]+(?:\.[0-9]+)?"""
             ).containsMatchIn(fullText)
@@ -2206,7 +2191,7 @@ private val processingTimeoutRunnable = Runnable {
         // protected below.
         Log.i(
             TAG,
-            "UBER REAL OFFER VERIFIED: Γé╣$fare | " +
+            "UBER REAL OFFER VERIFIED: ₹$fare | " +
                 "Pickup=$pickupKm km | Trip=$tripKm km"
         )
 
@@ -2334,7 +2319,7 @@ private val processingTimeoutRunnable = Runnable {
 
             // PART B/E: Detection-First Insert: IMMEDIATELY create one History record with PROCESSING status in Room
             val recordId = onOrderDetectedFast(candidate)
-            Log.i(TAG, "ΓÜí Uber order detected & inserted to Room [PROCESSING]: Fare=Γé╣${candidate.fare}, pickup=${candidate.pickupAddress}")
+            Log.i(TAG, "⚡ Uber order detected & inserted to Room [PROCESSING]: Fare=₹${candidate.fare}, pickup=${candidate.pickupAddress}")
 
             // Direct SharedPreferences Filter Evaluation before evaluating ANY ride
             val directResult = evaluateDirectRideFilters(candidate)
@@ -3347,7 +3332,7 @@ private val processingTimeoutRunnable = Runnable {
 
 
         val hasFare =
-            fullText.contains("Γé╣")
+            fullText.contains("₹")
 
 
         val kmCount =
@@ -3411,7 +3396,7 @@ private val processingTimeoutRunnable = Runnable {
             TAG,
             "UBER: verified offer has hidden Match node. " +
                 "Gesture fallback at ($matchX,$matchY) " +
-                "fare=Γé╣$fare pickup=$pickup trip=$trip"
+                "fare=₹$fare pickup=$pickup trip=$trip"
         )
 
 
@@ -3490,7 +3475,7 @@ private val processingTimeoutRunnable = Runnable {
     }
 
 
-    // Compatibility wrapper ΓÇö NEVER blind taps.
+    // Compatibility wrapper — NEVER blind taps.
     private fun fallbackUberTap(
         candidate: RideCandidate
     ) {
@@ -3563,13 +3548,13 @@ private val processingTimeoutRunnable = Runnable {
             timestamp = now,
             fareAmount = candidate.fare ?: 0f
         )
-        Log.i(TAG, "≡ƒôè [Stats] prefs.addOrderHistory() called for Uber order (Γé╣${candidate.fare})")
+        Log.i(TAG, "📊 [Stats] prefs.addOrderHistory() called for Uber order (₹${candidate.fare})")
 
         serviceScope.launch(Dispatchers.IO) {
             NotificationHelper.updateNotification(
                 context = applicationContext,
                 title = "SmartDrivo Active",
-                text = "≡ƒÄë Uber Order Accepted! Monitoring next..."
+                text = "🎉 Uber Order Accepted! Monitoring next..."
             )
 
             repository.recordOrderHistory(historyItem)
@@ -3771,9 +3756,9 @@ private val processingTimeoutRunnable = Runnable {
     /**
      * Checks pickup location text against Go-To and No-Go area lists:
      * - When order detected, check pickup location text
-     * - If pickup area matches any No-Go area ΓåÆ REJECT order
-     * - If Go-To areas list is set ΓåÆ only ACCEPT if pickup matches a Go-To area, else REJECT
-     * - If both lists empty ΓåÆ accept based on other filters only
+     * - If pickup area matches any No-Go area → REJECT order
+     * - If Go-To areas list is set → only ACCEPT if pickup matches a Go-To area, else REJECT
+     * - If both lists empty → accept based on other filters only
      */
     private fun checkPickupAreaRules(
         pickupLocationText: String,
@@ -3845,7 +3830,7 @@ private val processingTimeoutRunnable = Runnable {
     /**
      * Handles candidate detection and order processing for ola.cabs
      * Ola detection: scan window with package ola.cabs, find clickable accept button.
-     * States: OLA_DETECTED ΓåÆ OLA_CLICK_ATTEMPTED ΓåÆ OLA_ACCEPTED
+     * States: OLA_DETECTED → OLA_CLICK_ATTEMPTED → OLA_ACCEPTED
      */
     private fun handleOlaOrder(root: AccessibilityNodeInfo?, pkgName: String = "ola.cabs") {
         if (root == null) return
@@ -3887,7 +3872,7 @@ private val processingTimeoutRunnable = Runnable {
 
         // State transition: OLA_DETECTED
         setOlaState(OlaState.OLA_DETECTED)
-        Log.i(TAG, "≡ƒÜû [State: OLA_DETECTED] Clickable accept button detected for Ola ($pkgName)!")
+        Log.i(TAG, "🚖 [State: OLA_DETECTED] Clickable accept button detected for Ola ($pkgName)!")
 
         isProcessing = true
         handler.removeCallbacks(processingTimeoutRunnable)
@@ -3904,7 +3889,7 @@ private val processingTimeoutRunnable = Runnable {
             // Duplicate protection for Ola
             val bookingId = candidate.bookingId
             if (!bookingId.isNullOrBlank() && isDuplicateOlaBookingId(bookingId)) {
-                Log.i(TAG, "ΓÅ¡∩╕Å Duplicate Ola order skipped (bookingId: $bookingId)")
+                Log.i(TAG, "⏭️ Duplicate Ola order skipped (bookingId: $bookingId)")
                 RideDiagnosticsManager.recordDuplicateEvent(bookingId)
                 resetProcessing()
                 setOlaState(OlaState.IDLE)
@@ -3916,7 +3901,7 @@ private val processingTimeoutRunnable = Runnable {
 
             // PART B/E: Detection-First Insert: IMMEDIATELY create one History record with PROCESSING status in Room
             val recordId = onOrderDetectedFast(candidate)
-            Log.i(TAG, "ΓÜí Ola order detected & inserted to Room [PROCESSING]: Fare=Γé╣${candidate.fare}, pickup=${candidate.pickupAddress}")
+            Log.i(TAG, "⚡ Ola order detected & inserted to Room [PROCESSING]: Fare=₹${candidate.fare}, pickup=${candidate.pickupAddress}")
 
             // Direct SharedPreferences Filter Evaluation before evaluating ANY ride
             val directResult = evaluateDirectRideFilters(candidate)
@@ -4029,7 +4014,7 @@ private val processingTimeoutRunnable = Runnable {
      * 1. performAction(ACTION_CLICK) on Ola accept node
      * 2. If fails: gesture tap and swipe across node coordinates
      * 3. If fails: tap/swipe parent node or screen bottom
-     * States: OLA_DETECTED ΓåÆ OLA_CLICK_ATTEMPTED ΓåÆ OLA_ACCEPTED
+     * States: OLA_DETECTED → OLA_CLICK_ATTEMPTED → OLA_ACCEPTED
      */
     private fun executeOlaAutoAccept(
         root: AccessibilityNodeInfo,
@@ -4060,13 +4045,13 @@ private val processingTimeoutRunnable = Runnable {
 
         // State transition: OLA_CLICK_ATTEMPTED
         setOlaState(OlaState.OLA_CLICK_ATTEMPTED)
-        Log.i(TAG, "≡ƒÜû [State: OLA_CLICK_ATTEMPTED] Starting Ola auto-accept 3-method sequence for candidate fare=Γé╣${candidate.fare}...")
+        Log.i(TAG, "🚖 [State: OLA_CLICK_ATTEMPTED] Starting Ola auto-accept 3-method sequence for candidate fare=₹${candidate.fare}...")
 
         // METHOD 1: performAction(ACTION_CLICK) on Ola accept node
         val clicked = acceptNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         Log.i(TAG, "Ola Method 1: performAction(ACTION_CLICK) on accept node returned: $clicked")
         if (clicked) {
-            Log.i(TAG, "Γ£ô Ola Method 1 SUCCESSFUL via ACTION_CLICK!")
+            Log.i(TAG, "✓ Ola Method 1 SUCCESSFUL via ACTION_CLICK!")
             onOlaAccepted(candidate, timesClicked = 1)
             return
         }
@@ -4086,12 +4071,12 @@ private val processingTimeoutRunnable = Runnable {
                 Log.i(TAG, "Ola Method 2: Detected slider button. Swiping from $startX to $endX at $centerY")
                 simulateSwipeGesture(startX, centerY, endX, centerY) { swipeSuccess ->
                     if (swipeSuccess) {
-                        Log.i(TAG, "Γ£ô Ola Method 2 SUCCESSFUL via swipe on slider!")
+                        Log.i(TAG, "✓ Ola Method 2 SUCCESSFUL via swipe on slider!")
                         onOlaAccepted(candidate, timesClicked = 2)
                     } else {
                         simulateTapGesture(centerX, centerY, isInternalFallback = true) { tapSuccess ->
                             if (tapSuccess) {
-                                Log.i(TAG, "Γ£ô Ola Method 2 SUCCESSFUL via fallback tap!")
+                                Log.i(TAG, "✓ Ola Method 2 SUCCESSFUL via fallback tap!")
                                 onOlaAccepted(candidate, timesClicked = 2)
                             } else {
                                 executeOlaMethod3(acceptNode, candidate)
@@ -4105,12 +4090,12 @@ private val processingTimeoutRunnable = Runnable {
                     if (tapSuccess) {
                         // Also try a quick swipe across bounds in case it is a slide control
                         simulateSwipeGesture(startX, centerY, endX, centerY)
-                        Log.i(TAG, "Γ£ô Ola Method 2 SUCCESSFUL via gesture tap at coordinates!")
+                        Log.i(TAG, "✓ Ola Method 2 SUCCESSFUL via gesture tap at coordinates!")
                         onOlaAccepted(candidate, timesClicked = 2)
                     } else {
                         simulateSwipeGesture(startX, centerY, endX, centerY) { swipeSuccess ->
                             if (swipeSuccess) {
-                                Log.i(TAG, "Γ£ô Ola Method 2 SUCCESSFUL via swipe across bounds!")
+                                Log.i(TAG, "✓ Ola Method 2 SUCCESSFUL via swipe across bounds!")
                                 onOlaAccepted(candidate, timesClicked = 2)
                             } else {
                                 executeOlaMethod3(acceptNode, candidate)
@@ -4134,7 +4119,7 @@ private val processingTimeoutRunnable = Runnable {
             if (parent.isClickable) {
                 val parentClicked = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 if (parentClicked) {
-                    Log.i(TAG, "Γ£ô Ola Method 3 SUCCESSFUL via parent ACTION_CLICK!")
+                    Log.i(TAG, "✓ Ola Method 3 SUCCESSFUL via parent ACTION_CLICK!")
                     onOlaAccepted(candidate, timesClicked = 3)
                     return
                 }
@@ -4154,7 +4139,7 @@ private val processingTimeoutRunnable = Runnable {
                 simulateTapGesture(pCenterX, pCenterY, isInternalFallback = true) { tapSuccess ->
                     simulateSwipeGesture(pStartX, pCenterY, pEndX, pCenterY) { swipeSuccess ->
                         if (tapSuccess || swipeSuccess) {
-                            Log.i(TAG, "Γ£ô Ola Method 3 SUCCESSFUL via parent node tap/swipe!")
+                            Log.i(TAG, "✓ Ola Method 3 SUCCESSFUL via parent node tap/swipe!")
                             onOlaAccepted(candidate, timesClicked = 3)
                         } else {
                             fallbackOlaTap(candidate)
@@ -4170,7 +4155,7 @@ private val processingTimeoutRunnable = Runnable {
     }
 
     private fun fallbackOlaTap(candidate: RideCandidate) {
-        Log.w(TAG, "Γ¥î [Ola] Accept button not detected or invalid in hierarchy! Refusing blind coordinate taps.")
+        Log.w(TAG, "❌ [Ola] Accept button not detected or invalid in hierarchy! Refusing blind coordinate taps.")
         val recordId = activeOrderRecordIds[candidate.platform] ?: onOrderDetectedFast(candidate)
         onOrderActionCompletedFast(
             recordId = recordId,
@@ -4250,13 +4235,13 @@ private val processingTimeoutRunnable = Runnable {
             timestamp = now,
             fareAmount = candidate.fare ?: 0f
         )
-        Log.i(TAG, "≡ƒôè [Stats] prefs.addOrderHistory() called for Ola order (Γé╣${candidate.fare})")
+        Log.i(TAG, "📊 [Stats] prefs.addOrderHistory() called for Ola order (₹${candidate.fare})")
 
         serviceScope.launch(Dispatchers.IO) {
             NotificationHelper.updateNotification(
                 context = applicationContext,
                 title = "SmartDrivo Active",
-                text = "≡ƒÄë Ola Order Accepted! Monitoring next..."
+                text = "🎉 Ola Order Accepted! Monitoring next..."
             )
 
             repository.recordOrderHistory(historyItem)
@@ -4293,7 +4278,7 @@ private val processingTimeoutRunnable = Runnable {
             val text = node.text?.toString()?.trim()
             val desc = node.contentDescription?.toString()?.trim()
             if (OlaAdapter.isAcceptText(text) || OlaAdapter.isAcceptDesc(desc)) {
-                Log.i(TAG, "Γ£ô Ola accept button detected via clickable node text: '$text', desc: '$desc'")
+                Log.i(TAG, "✓ Ola accept button detected via clickable node text: '$text', desc: '$desc'")
                 return node
             }
             // Check immediate children inside clickable container
@@ -4304,7 +4289,7 @@ private val processingTimeoutRunnable = Runnable {
                 val isMatch = OlaAdapter.isAcceptText(cText) || OlaAdapter.isAcceptDesc(cDesc)
                 child.recycle()
                 if (isMatch) {
-                    Log.i(TAG, "Γ£ô Ola accept button detected via clickable container child text: '$cText', desc: '$cDesc'")
+                    Log.i(TAG, "✓ Ola accept button detected via clickable container child text: '$cText', desc: '$cDesc'")
                     return node
                 }
             }
@@ -4317,19 +4302,19 @@ private val processingTimeoutRunnable = Runnable {
                 val candidate = list[0]
                 for (i in 1 until list.size) list[i].recycle()
                 val target = resolveClickableTarget(candidate)
-                Log.i(TAG, "Γ£ô Ola accept button detected via Resource ID: '$resId'")
+                Log.i(TAG, "✓ Ola accept button detected via Resource ID: '$resId'")
                 return target
             }
         }
 
         // 4. Direct text search queries for accept
-        for (query in listOf("Accept", "ACCEPT", "Accept Ride", "Accept Order", "Accept Booking", "Confirm", "Confirm Ride", "Confirm Booking", "αñ╕αÑìαñ╡αÑÇαñòαñ╛αñ░ αñòαñ░αÑçαñé", "αñ╕αÑìαñ╡αÑÇαñòαñ╛αñ░", "Slide to Accept", "Swipe to Accept")) {
+        for (query in listOf("Accept", "ACCEPT", "Accept Ride", "Accept Order", "Accept Booking", "Confirm", "Confirm Ride", "Confirm Booking", "स्वीकार करें", "स्वीकार", "Slide to Accept", "Swipe to Accept")) {
             val list = root.findAccessibilityNodeInfosByText(query)
             if (!list.isNullOrEmpty()) {
                 val candidate = list[0]
                 for (i in 1 until list.size) list[i].recycle()
                 val target = resolveClickableTarget(candidate)
-                Log.i(TAG, "Γ£ô Ola accept button detected via text query '$query'")
+                Log.i(TAG, "✓ Ola accept button detected via text query '$query'")
                 return target
             }
         }
@@ -4401,11 +4386,11 @@ private val processingTimeoutRunnable = Runnable {
         "(?:drop|trip|distance)[\\s:]*([0-9]+(?:\\.[0-9]+)?)\\s*(?:km)?",
         Pattern.CASE_INSENSITIVE
     )
-    private val RAPIDO_RUPEE_REGEX = Pattern.compile("Γé╣\\s*([0-9]+(?:\\.[0-9]+)?)")
+    private val RAPIDO_RUPEE_REGEX = Pattern.compile("₹\\s*([0-9]+(?:\\.[0-9]+)?)")
 
     /**
      * FIX 2: Uses RapidoAdapter.extractOrderData to extract:
-     * - Fare: base, tip, total ("Γé╣83 +Γé╣26" -> base=83, tip=26, total=109)
+     * - Fare: base, tip, total ("₹83 +₹26" -> base=83, tip=26, total=109)
      * - Pickup distance: first occurrence of "[0-9.]+\s*km"
      * - Drop distance: second occurrence of "[0-9.]+\s*km"
      * - Pickup address: text under first km node (skipping "Auto", "Services", "Nearby")
@@ -4439,7 +4424,7 @@ private val processingTimeoutRunnable = Runnable {
 
         val rawCandidates = textList.map { it.trim() }.filter {
             it.length >= 3 &&
-            !it.contains("Γé╣") &&
+            !it.contains("₹") &&
             !it.matches(Regex("^[0-9.]+$")) &&
             !it.contains("km", ignoreCase = true) &&
             !it.equals("accept", ignoreCase = true) &&
@@ -4458,7 +4443,7 @@ private val processingTimeoutRunnable = Runnable {
             ?: rawCandidates.getOrNull(1)
             ?: rawPickup
 
-        // Requirement 2: If extracted address matches any blocklist word ΓåÆ save as "Address unavailable" instead
+        // Requirement 2: If extracted address matches any blocklist word → save as "Address unavailable" instead
         val pickupAddress = if (rawPickup.isBlank() || RapidoAdapter.matchesBlocklist(rawPickup) || RapidoAdapter.isInvalidAddress(rawPickup)) {
             "Address unavailable"
         } else {
@@ -4565,8 +4550,8 @@ private val processingTimeoutRunnable = Runnable {
             return true
         }
 
-        // If node text contains fare ("Γé╣") or distance ("km") or location terms, it's card/details, NOT the accept button
-        if (combined.contains("Γé╣") ||
+        // If node text contains fare ("₹") or distance ("km") or location terms, it's card/details, NOT the accept button
+        if (combined.contains("₹") ||
             combined.contains(" km") ||
             combined.contains("pickup") ||
             combined.contains("drop") ||
@@ -4717,7 +4702,7 @@ private val processingTimeoutRunnable = Runnable {
     /**
      * Requirement 5: Add a check: if Rapido app is not showing an order popup, do not trigger any click.
      * An order popup MUST contain:
-     * 1. Fare currency (Γé╣)
+     * 1. Fare currency (₹)
      * 2. Distance (km)
      * 3. Specific "Accept" or "ACCEPT" button on screen
      */
@@ -4759,7 +4744,7 @@ private val processingTimeoutRunnable = Runnable {
                 val text = node.text?.toString()?.trim() ?: ""
                 val desc = node.contentDescription?.toString()?.trim() ?: ""
 
-                if (text.contains("Γé╣") || desc.contains("Γé╣") ||
+                if (text.contains("₹") || desc.contains("₹") ||
                     text.contains("Rs.", ignoreCase = true) || desc.contains("Rs.", ignoreCase = true) ||
                     RapidoAdapter.RUPEE_AMOUNT_REGEX.matcher(text).find() ||
                     RapidoAdapter.RUPEE_AMOUNT_REGEX.matcher(desc).find()
@@ -4795,211 +4780,12 @@ private val processingTimeoutRunnable = Runnable {
 
     /**
      * FIX 1 - Order Card Detection:
-     * When order card detected (node with "Γé╣" + distance "km" both found in screen).
+     * When order card detected (node with "₹" + distance "km" both found in screen).
      */
     // RAPIDO_POST_ACCEPT_FIX_V1
     // Rapido may keep a visible card/container after Match/Accept succeeds.
     // These texts are confirmation/status UI, NOT a new ride offer.
-    // RAPIDO_HISTORY_VERIFY_RACE_V1
-        // RAPIDO_STRICT_ACCEPT_CONFIRM_V1
-    // Check every visible Rapido accessibility window for the REAL result.
-    // A disappearing offer card alone is never proof of acceptance.
-    private fun getRapidoStatusRootForVerification(
-        fallbackNode: AccessibilityNodeInfo? = null
-    ): AccessibilityNodeInfo? {
-
-        val candidates = mutableListOf<AccessibilityNodeInfo>()
-        val seen = mutableSetOf<String>()
-
-        fun addCandidate(node: AccessibilityNodeInfo?) {
-            if (node == null) return
-
-            val top = getTopRootNode(node) ?: node
-            val pkg = top.packageName?.toString().orEmpty()
-
-            if (!isRapidoPackage(pkg)) return
-
-            val windowId =
-                try {
-                    top.windowId
-                } catch (_: Exception) {
-                    -1
-                }
-
-            val key =
-                if (windowId >= 0) {
-                    "$pkg|$windowId"
-                } else {
-                    "$pkg|${System.identityHashCode(top)}"
-                }
-
-            if (seen.add(key)) {
-                candidates.add(top)
-            }
-        }
-
-        addCandidate(fallbackNode)
-        addCandidate(rootInActiveWindow)
-
-        try {
-            windows.forEach { window ->
-                addCandidate(window.root)
-            }
-        } catch (e: Exception) {
-            Log.w(
-                TAG,
-                "Rapido result window scan failed: ${e.message}"
-            )
-        }
-
-        candidates.firstOrNull {
-            isRapidoMissedOrExpiredScreen(it)
-        }?.let {
-            return it
-        }
-
-        candidates.firstOrNull {
-            isRapidoAcceptedConfirmationScreen(it)
-        }?.let {
-            return it
-        }
-
-        return candidates.firstOrNull()
-    }
-
-    private fun verifyRapidoOutcomeAfterPopupClosed(
-        candidate: RideCandidate,
-        recordId: String,
-        acceptedHistoryReason: String?,
-        timesClicked: Int,
-        fallbackRoot: AccessibilityNodeInfo?
-    ) {
-        serviceScope.launch(Dispatchers.IO) {
-
-            var missed = false
-            var accepted = false
-
-            for (check in 0 until 6) {
-
-                val statusRoot =
-                    getRapidoStatusRootForVerification(
-                        fallbackRoot
-                    )
-
-                missed =
-                    isRapidoMissedOrExpiredScreen(
-                        statusRoot
-                    )
-
-                if (missed) break
-
-                accepted =
-                    isRapidoAcceptedConfirmationScreen(
-                        statusRoot
-                    )
-
-                if (accepted) break
-
-                delay(
-                    if (check == 0) 60L else 100L
-                )
-            }
-
-            when {
-                missed -> {
-                    Log.w(
-                        TAG,
-                        "RAPIDO RESULT: MISSED / accepted by another captain"
-                    )
-
-                    onOrderActionCompletedFast(
-                        recordId = recordId,
-                        candidate = candidate,
-                        status = OrderStatus.MISSED,
-                        reasonCode =
-                            "ORDER_MISSED_AFTER_ACCEPT_ATTEMPT",
-                        reasonText =
-                            "Order was taken by another captain after SmartDrivo accept attempt",
-                        actionSucceeded = false,
-                        timesClicked =
-                            timesClicked.coerceAtLeast(1),
-                        buttonFound = true,
-                        buttonDetails =
-                            "Verified Rapido Accept was attempted",
-                        clickMethod =
-                            "Strict Button Click"
-                    )
-                }
-
-                accepted -> {
-                    Log.i(
-                        TAG,
-                        "RAPIDO RESULT: explicit acceptance confirmation detected"
-                    )
-
-                    showAcceptedOrderOverlay(candidate)
-
-                    NotificationHelper.updateNotification(
-                        context = applicationContext,
-                        title = "SmartDrivo Active",
-                        text =
-                            "🎉 Order Accepted! Monitoring next..."
-                    )
-
-                    onOrderActionCompletedFast(
-                        recordId = recordId,
-                        candidate = candidate,
-                        status = OrderStatus.ACCEPTED,
-                        reasonCode = "FILTERS_MATCHED",
-                        reasonText =
-                            acceptedHistoryReason
-                                ?.takeIf { it.isNotBlank() }
-                                ?: buildAcceptedFilterReason(candidate),
-                        actionSucceeded = true,
-                        timesClicked =
-                            timesClicked.coerceAtLeast(1),
-                        buttonFound = true,
-                        buttonDetails =
-                            "Rapido explicit acceptance confirmation detected",
-                        clickMethod =
-                            "Strict Button Click"
-                    )
-                }
-
-                else -> {
-                    Log.w(
-                        TAG,
-                        "RAPIDO RESULT: accept sent but result not explicitly confirmed"
-                    )
-
-                    onOrderActionCompletedFast(
-                        recordId = recordId,
-                        candidate = candidate,
-                        status = OrderStatus.FAILED,
-                        reasonCode =
-                            "ACCEPT_RESULT_UNCONFIRMED",
-                        reasonText =
-                            "Accept was attempted but Rapido did not confirm the order",
-                        actionSucceeded = false,
-                        timesClicked =
-                            timesClicked.coerceAtLeast(1),
-                        buttonFound = true,
-                        buttonDetails =
-                            "Verified Accept was attempted",
-                        clickMethod =
-                            "Strict Button Click",
-                        errorMsg =
-                            "No explicit Rapido success confirmation"
-                    )
-                }
-            }
-
-            resetProcessing()
-        }
-    }
-private fun isRapidoAcceptedConfirmationScreen(
-        root: AccessibilityNodeInfo?
-    ): Boolean {
+    private fun isRapidoPostAcceptScreen(root: AccessibilityNodeInfo?): Boolean {
         if (root == null) return false
 
         val textList = mutableListOf<String>()
@@ -5008,34 +4794,11 @@ private fun isRapidoAcceptedConfirmationScreen(
 
         return allText.contains("thanks for accepting") ||
             allText.contains("checking order status") ||
-            allText.contains("go to pickup") ||
-            allText.contains("go to pick up") ||
-            allText.contains("pick up here") ||
-            allText.contains("message customer") ||
-            allText.contains("arrived")
-    }
-
-    private fun isRapidoMissedOrExpiredScreen(
-        root: AccessibilityNodeInfo?
-    ): Boolean {
-        if (root == null) return false
-
-        val textList = mutableListOf<String>()
-        collectAllNodeText(root, textList)
-        val allText = textList.joinToString(" ").lowercase(Locale.ROOT)
-
-        return allText.contains("you missed the order") ||
+            allText.contains("you missed the order") ||
             allText.contains("order missed") ||
             allText.contains("order expired") ||
             allText.contains("no longer available") ||
             allText.contains("accepted by another")
-    }
-
-    private fun isRapidoPostAcceptScreen(
-        root: AccessibilityNodeInfo?
-    ): Boolean {
-        return isRapidoAcceptedConfirmationScreen(root) ||
-            isRapidoMissedOrExpiredScreen(root)
     }
     private fun isRapidoOrderScreenVisible(root: AccessibilityNodeInfo?): Boolean {
         return isRapidoOrderPopupShowing(root)
@@ -5055,10 +4818,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         // Never parse Rapido confirmation/status UI as a fresh ride.
         // The running accept-verification coroutine will finalize the ORIGINAL
         // history row, preserving fare, distance and addresses.
-        // RAPIDO_REDUNDANT_SCAN_SPEED_V1
-        // If processAccessibilityEvent already supplied a valid popup,
-        // do not immediately scan the whole tree again for post-accept text.
-        if (preValidation == null && isRapidoPostAcceptScreen(root)) {
+        if (isRapidoPostAcceptScreen(root)) {
             Log.i(TAG, "RAPIDO POST-ACCEPT screen detected; blocking duplicate candidate/history insert")
             return
         }
@@ -5073,13 +4833,13 @@ private fun isRapidoAcceptedConfirmationScreen(
             if (RapidoAdapter.isRapidoHomeScreen(root)) {
                 Log.i(
                     TAG,
-                    "≡ƒÅá Rapido HOME SCREEN detected with no valid order popup. " +
+                    "🏠 Rapido HOME SCREEN detected with no valid order popup. " +
                         "Skipping completely."
                 )
             } else {
                 Log.d(
                     TAG,
-                    "Γ¥î Rapido order popup missing required elements: " +
+                    "❌ Rapido order popup missing required elements: " +
                         "${validation.failureReason}. " +
                         "Do NOT log to history, do NOT process."
                 )
@@ -5203,7 +4963,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         activeRapidoPopupOrderId = orderId
 
         val recordId = onOrderDetectedFast(candidate)
-        Log.i(TAG, "ΓÜí Rapido order detected & inserted to Room [PROCESSING]: Fare=Γé╣${candidate.fare}, pickup=${candidate.pickupAddress}")
+        Log.i(TAG, "⚡ Rapido order detected & inserted to Room [PROCESSING]: Fare=₹${candidate.fare}, pickup=${candidate.pickupAddress}")
 
         // Auto-Accept and Auto-Reject are independent.
         // BOTH OFF -> manual mode.
@@ -5238,7 +4998,7 @@ private fun isRapidoAcceptedConfirmationScreen(
                 reasonCode = "NO_ACTIVE_PLAN",
                 reasonText = "No active plan - auto-accept inactive"
             )
-            Log.i(TAG, "≡ƒôï Rapido order logged as IGNORED: No active plan")
+            Log.i(TAG, "📋 Rapido order logged as IGNORED: No active plan")
             resetProcessing()
             return
         }
@@ -5251,7 +5011,7 @@ private fun isRapidoAcceptedConfirmationScreen(
                 reasonCode = "PLATFORM_DISABLED",
                 reasonText = "Rapido disabled in settings"
             )
-            Log.i(TAG, "≡ƒôï Rapido order logged as IGNORED: Rapido platform disabled in settings")
+            Log.i(TAG, "📋 Rapido order logged as IGNORED: Rapido platform disabled in settings")
             resetProcessing()
             return
         }
@@ -5290,7 +5050,7 @@ private fun isRapidoAcceptedConfirmationScreen(
             // - Only accept when both fare AND distance values are clearly extracted as numbers
 
             if (candidate.fare == null || candidate.fare <= 0f) {
-                Log.i(TAG, "ΓÅ¡∩╕Å [BUG 1] Rapido order SKIPPED: fare is null or unavailable (${candidate.fare})")
+                Log.i(TAG, "⏭️ [BUG 1] Rapido order SKIPPED: fare is null or unavailable (${candidate.fare})")
                 onOrderDecisionFast(
                     recordId = recordId,
                     candidate = candidate,
@@ -5309,7 +5069,7 @@ private fun isRapidoAcceptedConfirmationScreen(
 
             if (isNearbyPickup || isPickupUnknown) {
                 val skipReason = if (isNearbyPickup) "Pickup is Nearby - order skipped" else "Pickup distance unknown - order skipped"
-                Log.i(TAG, "ΓÅ¡∩╕Å [BUG 1] Rapido order SKIPPED: $skipReason (pickupDistKm=${candidate.pickupDistKm})")
+                Log.i(TAG, "⏭️ [BUG 1] Rapido order SKIPPED: $skipReason (pickupDistKm=${candidate.pickupDistKm})")
                 onOrderDecisionFast(
                     recordId = recordId,
                     candidate = candidate,
@@ -5545,34 +5305,17 @@ private fun isRapidoAcceptedConfirmationScreen(
                 !isRapidoOrderPopupShowing(rapidoRoot)
             )
         ) {
-            // RAPIDO_STRICT_ACCEPT_CONFIRM_V1
-            if (attemptNumber > 1) {
-                verifyRapidoOutcomeAfterPopupClosed(
-                    candidate = candidate,
-                    recordId = pinnedRecordId,
-                    acceptedHistoryReason =
-                        acceptedHistoryReason,
-                    timesClicked =
-                        (attemptNumber - 1)
-                            .coerceAtLeast(1),
-                    fallbackRoot =
-                        orderRoot
-                )
-                return
-            }
+            Log.i(TAG, "Rapido order popup nodes are not visible (fare and Accept button required). No click triggered.")
 
-            Log.i(
-                TAG,
-                "Rapido popup closed before any verified Accept click was completed."
-            )
+            val recordId = pinnedRecordId
+
 
             onOrderDecisionFast(
-                recordId = pinnedRecordId,
+                recordId = recordId,
                 candidate = candidate,
                 status = OrderStatus.IGNORED,
                 reasonCode = "ORDER_POPUP_CLOSED",
-                reasonText =
-                    "Order popup closed before SmartDrivo completed the action"
+                reasonText = "Order popup closed before SmartDrivo completed the action"
             )
 
             resetProcessing()
@@ -5585,7 +5328,7 @@ private fun isRapidoAcceptedConfirmationScreen(
             // Requirement 4: If "Accept" button not found, do nothing - do not click randomly
             Log.w(
                 TAG,
-                "Γ¥î [Rapido] Accept button with text 'Accept' or 'ACCEPT' NOT found on screen (attempt #$attemptNumber)! " +
+                "❌ [Rapido] Accept button with text 'Accept' or 'ACCEPT' NOT found on screen (attempt #$attemptNumber)! " +
                     "Doing nothing - will NOT click randomly."
             )
             val recordId = pinnedRecordId
@@ -5609,7 +5352,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         // Requirement 1 & 3: Do NOT click anywhere on Rapido app except the specific "Accept" button.
         // Do NOT click on the order card, ride details, or any other area.
         if (isOrderCardOrDetailsNode(acceptNode)) {
-            Log.w(TAG, "Γ¥î [Rapido] Detected node is an order card or ride details container! Refusing to click.")
+            Log.w(TAG, "❌ [Rapido] Detected node is an order card or ride details container! Refusing to click.")
             val recordId = pinnedRecordId
             onOrderActionCompletedFast(
                 recordId = recordId,
@@ -5647,7 +5390,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         if (!verifiedRapidoTarget) {
             Log.w(
                 TAG,
-                "Γ¥î [Rapido] Accept target is not owned by Rapido " +
+                "❌ [Rapido] Accept target is not owned by Rapido " +
                     "(acceptPkg='$acceptNodePkg', rootPkg='$rapidoRootPkg'). Click prevented."
             )
 
@@ -5675,13 +5418,13 @@ private fun isRapidoAcceptedConfirmationScreen(
         if (RapidoAdapter.isSmartDrivoPackage(activePkgBeforeClick)) {
             Log.i(
                 TAG,
-                "Γ£à [Rapido] SmartDrivo is active root, but verified Rapido overlay " +
+                "✅ [Rapido] SmartDrivo is active root, but verified Rapido overlay " +
                     "Accept target belongs to Rapido. Safe click allowed."
             )
         }
         Log.i(
             TAG,
-            "Γ£à [Rapido] Strict Accept button FOUND | " +
+            "✅ [Rapido] Strict Accept button FOUND | " +
                 "ID: ${acceptNode.viewIdResourceName} | " +
                 "Text: '${acceptNode.text}' | " +
                 "ContentDesc: '${acceptNode.contentDescription}' | " +
@@ -5694,7 +5437,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         // Primary: performAction(ACTION_CLICK) directly on accept node
         if (acceptNode.isClickable) {
             clicked = acceptNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            Log.i(TAG, "≡ƒæå [Rapido] Click performed: acceptNode.performAction(ACTION_CLICK) -> Result: $clicked")
+            Log.i(TAG, "👆 [Rapido] Click performed: acceptNode.performAction(ACTION_CLICK) -> Result: $clicked")
         }
 
         // Secondary: If not clickable directly, only click immediate parent if it is a strict button container (never card/container)
@@ -5702,7 +5445,7 @@ private fun isRapidoAcceptedConfirmationScreen(
             val parent = acceptNode.parent
             if (parent != null && parent.isClickable && isStrictButtonContainer(parent)) {
                 clicked = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                Log.i(TAG, "≡ƒæå [Rapido] Click performed: parent.performAction(ACTION_CLICK) on strict button -> Result: $clicked")
+                Log.i(TAG, "👆 [Rapido] Click performed: parent.performAction(ACTION_CLICK) on strict button -> Result: $clicked")
             }
         }
 
@@ -5713,10 +5456,10 @@ private fun isRapidoAcceptedConfirmationScreen(
             if (bounds.width() > 0 && bounds.height() > 0 && !isOrderCardOrDetailsNode(acceptNode)) {
                 val cx = bounds.centerX().toFloat()
                 val cy = bounds.centerY().toFloat()
-                Log.i(TAG, "≡ƒæå [Rapido] Click performed: Gesture tap strictly at Accept button center ($cx, $cy), screenBounds=$bounds")
+                Log.i(TAG, "👆 [Rapido] Click performed: Gesture tap strictly at Accept button center ($cx, $cy), screenBounds=$bounds")
                 simulateTapGesture(cx, cy, isInternalFallback = true)
             } else {
-                Log.w(TAG, "Γ¥î [Rapido] Accept button bounds invalid ($bounds) - doing nothing, no random click")
+                Log.w(TAG, "❌ [Rapido] Accept button bounds invalid ($bounds) - doing nothing, no random click")
                 val recordId = pinnedRecordId
                 onOrderActionCompletedFast(
                     recordId = recordId,
@@ -5736,50 +5479,26 @@ private fun isRapidoAcceptedConfirmationScreen(
             }
         }
 
-        // ΓòÉΓòÉΓòÉ STEP 4 - Verify: order popup gone in 200ms = ACCEPTED. Cooldown: 200ms max between attempts ΓòÉΓòÉΓòÉ
+        // ═══ STEP 4 - Verify: order popup gone in 200ms = ACCEPTED. Cooldown: 200ms max between attempts ═══
         serviceScope.launch(Dispatchers.IO) {
             delay(40L) // RAPIDO_SPEED_V3
             val currentRoot = getRapidoOrderRootNode(orderRoot)
-            val acceptedConfirmation =
-                isRapidoAcceptedConfirmationScreen(currentRoot)
-            val missedConfirmation =
-                isRapidoMissedOrExpiredScreen(currentRoot)
+                        val postAcceptConfirmed = isRapidoPostAcceptScreen(currentRoot)
+val isOrderStillVisible =
+    currentRoot != null &&
+        isRapidoOrderPopupShowing(currentRoot)
 
-            val isOrderStillVisible =
-                currentRoot != null &&
-                    isRapidoOrderPopupShowing(currentRoot)
-
-            if (missedConfirmation) {
-                val recordId = pinnedRecordId
-
-                onOrderActionCompletedFast(
-                    recordId = recordId,
-                    candidate = candidate,
-                    status = OrderStatus.MISSED,
-                    reasonCode = "ORDER_MISSED_AFTER_ACCEPT_ATTEMPT",
-                    reasonText = "Order expired or was taken after accept attempt",
-                    actionSucceeded = false,
-                    timesClicked = attemptNumber,
-                    buttonFound = true,
-                    buttonDetails = "Verified Rapido Accept button was attempted",
-                    clickMethod = "Strict Button Click (attempt #$attemptNumber)"
-                )
-
-                resetProcessing()
-                return@launch
-            }
-
-            if (acceptedConfirmation || !isOrderStillVisible) {
+                        if (postAcceptConfirmed || !isOrderStillVisible) {
                 // RAPIDO_ACCEPTED_OVERLAY_FAST_V3
                 // Acceptance confirmed: show popup first.
                 // History/database work must not delay the overlay.
                 showAcceptedOrderOverlay(candidate)
                 // Order popup gone in 200ms = ACCEPTED
-                Log.i(TAG, "≡ƒÄë STEP 4: Rapido order popup gone in 200ms = ACCEPTED (Attempt #$attemptNumber)")
+                Log.i(TAG, "🎉 STEP 4: Rapido order popup gone in 200ms = ACCEPTED (Attempt #$attemptNumber)")
                 NotificationHelper.updateNotification(
                     context = applicationContext,
                     title = "SmartDrivo Active",
-                    text = "≡ƒÄë Order Accepted! Monitoring next..."
+                    text = "🎉 Order Accepted! Monitoring next..."
                 )
                 val recordId = pinnedRecordId
                 onOrderActionCompletedFast(
@@ -5937,7 +5656,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         // Fix 4: Check if waiting after rate limit penalty (5-second cooldown)
         if (now < clickBlockedUntilTimestamp) {
             val waitRemaining = clickBlockedUntilTimestamp - now
-            Log.w(TAG, "≡ƒÜ½ [Fix 4] simulateTapGesture blocked: rate limit 5s cooldown active (remaining: ${waitRemaining}ms)")
+            Log.w(TAG, "🚫 [Fix 4] simulateTapGesture blocked: rate limit 5s cooldown active (remaining: ${waitRemaining}ms)")
             onComplete?.invoke(false)
             return
         }
@@ -5945,7 +5664,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         if (!isInternalFallback) {
             // Check Fix 3 & Fix 4
             if (!canExecuteClick()) {
-                Log.w(TAG, "≡ƒÜ½ simulateTapGesture skipped at ($x, $y) due to cooldown or rate limit")
+                Log.w(TAG, "🚫 simulateTapGesture skipped at ($x, $y) due to cooldown or rate limit")
                 onComplete?.invoke(false)
                 return
             }
@@ -5957,7 +5676,7 @@ private fun isRapidoAcceptedConfirmationScreen(
             if (recentClickTimestamps.size > 3) {
                 clickBlockedUntilTimestamp = now + 5000L
                 recentClickTimestamps.clear()
-                Log.e(TAG, "≡ƒÜ¿ [Fix 4] More than 3 clicks in 2s detected in gesture sequence! Halting all clicks for 5 seconds.")
+                Log.e(TAG, "🚨 [Fix 4] More than 3 clicks in 2s detected in gesture sequence! Halting all clicks for 5 seconds.")
                 onComplete?.invoke(false)
                 return
             }
@@ -5970,24 +5689,24 @@ private fun isRapidoAcceptedConfirmationScreen(
             val stroke = GestureDescription.StrokeDescription(path, 0, ACCEPT_CLICK_SPEED_MS)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
 
-            Log.i(TAG, "≡ƒæå [Rapido] Click performed: dispatching tap gesture at ($x, $y) with duration ${ACCEPT_CLICK_SPEED_MS}ms")
+            Log.i(TAG, "👆 [Rapido] Click performed: dispatching tap gesture at ($x, $y) with duration ${ACCEPT_CLICK_SPEED_MS}ms")
 
             val success = dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
                     super.onCompleted(gestureDescription)
-                    Log.i(TAG, "≡ƒæå [Rapido] Click performed: dispatchGesture COMPLETED successfully at ($x, $y)")
+                    Log.i(TAG, "👆 [Rapido] Click performed: dispatchGesture COMPLETED successfully at ($x, $y)")
                     onComplete?.invoke(true)
                 }
 
                 override fun onCancelled(gestureDescription: GestureDescription?) {
                     super.onCancelled(gestureDescription)
-                    Log.w(TAG, "≡ƒæå [Rapido] Click performed: dispatchGesture CANCELLED by system at ($x, $y)")
+                    Log.w(TAG, "👆 [Rapido] Click performed: dispatchGesture CANCELLED by system at ($x, $y)")
                     onComplete?.invoke(false)
                 }
             }, null)
 
             if (!success) {
-                Log.w(TAG, "≡ƒæå [Rapido] Click performed: dispatchGesture returned FALSE immediately at ($x, $y)")
+                Log.w(TAG, "👆 [Rapido] Click performed: dispatchGesture returned FALSE immediately at ($x, $y)")
                 onComplete?.invoke(false)
             }
         } catch (e: Exception) {
@@ -6007,7 +5726,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         val now = System.currentTimeMillis()
         if (now < clickBlockedUntilTimestamp) {
             val waitRemaining = clickBlockedUntilTimestamp - now
-            Log.w(TAG, "≡ƒÜ½ simulateSwipeGesture blocked: cooldown active (${waitRemaining}ms)")
+            Log.w(TAG, "🚫 simulateSwipeGesture blocked: cooldown active (${waitRemaining}ms)")
             onComplete?.invoke(false)
             return
         }
@@ -6023,13 +5742,13 @@ private fun isRapidoAcceptedConfirmationScreen(
             val success = dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
                     super.onCompleted(gestureDescription)
-                    Log.i(TAG, "≡ƒæå Swipe gesture completed from ($startX, $startY) to ($endX, $endY)")
+                    Log.i(TAG, "👆 Swipe gesture completed from ($startX, $startY) to ($endX, $endY)")
                     onComplete?.invoke(true)
                 }
 
                 override fun onCancelled(gestureDescription: GestureDescription?) {
                     super.onCancelled(gestureDescription)
-                    Log.w(TAG, "≡ƒæå Swipe gesture cancelled from ($startX, $startY) to ($endX, $endY)")
+                    Log.w(TAG, "👆 Swipe gesture cancelled from ($startX, $startY) to ($endX, $endY)")
                     onComplete?.invoke(false)
                 }
             }, null)
@@ -6057,7 +5776,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         val allTexts = mutableListOf<String>()
         collectAllScreenTexts(root, allTexts)
 
-        Log.d(TAG, "≡ƒöì Rapido window found! Button texts: $buttonTexts | Total texts: ${allTexts.size}")
+        Log.d(TAG, "🔍 Rapido window found! Button texts: $buttonTexts | Total texts: ${allTexts.size}")
         logAndDumpAllNodes(root)
     }
 
@@ -6167,7 +5886,7 @@ private fun isRapidoAcceptedConfirmationScreen(
 
             Log.i(
                 TAG,
-                "Evaluating ride: fare=Γé╣${candidate.fare}, pickup=${candidate.pickupDistKm}km, drop=${candidate.dropDistKm}km, vehicle=${candidate.vehicleType}. FilterMode=${effectiveSettings.filterMode} [Fare Range: Γé╣${effectiveSettings.minFare.toInt()}-Γé╣${effectiveSettings.maxFare.toInt()}, Max Pickup: ${effectiveSettings.maxPickupDistanceKm}km, Max Drop: ${effectiveSettings.maxDropDistanceKm}km]"
+                "Evaluating ride: fare=₹${candidate.fare}, pickup=${candidate.pickupDistKm}km, drop=${candidate.dropDistKm}km, vehicle=${candidate.vehicleType}. FilterMode=${effectiveSettings.filterMode} [Fare Range: ₹${effectiveSettings.minFare.toInt()}-₹${effectiveSettings.maxFare.toInt()}, Max Pickup: ${effectiveSettings.maxPickupDistanceKm}km, Max Drop: ${effectiveSettings.maxDropDistanceKm}km]"
             )
 
             // Check pickup location text against Go-To and No-Go area lists
@@ -6242,7 +5961,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         val acceptNode = when (platform) {
             Platform.RAPIDO -> {
                 if (!isRapidoOrderPopupShowing(root)) {
-                    Log.d(TAG, "Rapido order popup not visible (requires Γé╣, km, and 'Accept'/'ACCEPT' button). Waiting...")
+                    Log.d(TAG, "Rapido order popup not visible (requires ₹, km, and 'Accept'/'ACCEPT' button). Waiting...")
                 } else {
                     executeRapidoAutoAccept(candidate, root)
                 }
@@ -6319,7 +6038,7 @@ private fun isRapidoAcceptedConfirmationScreen(
 
             if (!clicked && platform != Platform.RAPIDO && platform != Platform.UBER) {
                 // Fallback recursive search on root with standard accept texts for other platforms
-                val fallbackTexts = listOf("Accept", "ACCEPT", "Accept Ride", "Accept Order", "Tap to Accept", "αñ╕αÑìαñ╡αÑÇαñòαñ╛αñ░ αñòαñ░αÑçαñé")
+                val fallbackTexts = listOf("Accept", "ACCEPT", "Accept Ride", "Accept Order", "Tap to Accept", "स्वीकार करें")
                 clicked = findAndClick(root, fallbackTexts)
             }
 
@@ -6331,7 +6050,7 @@ private fun isRapidoAcceptedConfirmationScreen(
                 NotificationHelper.updateNotification(
                     context = applicationContext,
                     title = "SmartDrivo Active",
-                    text = "≡ƒÄë Order Accepted! Monitoring next..."
+                    text = "🎉 Order Accepted! Monitoring next..."
                 )
 
                 // Post verification check (reduced to 150ms max)
@@ -6632,7 +6351,7 @@ private fun isRapidoAcceptedConfirmationScreen(
             ) {
                 Log.i(
                     TAG,
-                    "Γ¢ö [Rapido Auto-Reject FAST] direct reject control found " +
+                    "⛔ [Rapido Auto-Reject FAST] direct reject control found " +
                         "text='${fastNode.text}', " +
                         "id='${fastNode.viewIdResourceName}'"
                 )
@@ -6678,8 +6397,8 @@ private fun isRapidoAcceptedConfirmationScreen(
                     label.contains("decline") ||
                     label.contains("skip") ||
                     label.contains("pass") ||
-                    text in setOf("-", "ΓêÆ", "ΓÇô", "ΓÇö") ||
-                    desc in setOf("-", "ΓêÆ", "ΓÇô", "ΓÇö")
+                    text in setOf("-", "−", "–", "—") ||
+                    desc in setOf("-", "−", "–", "—")
 
             if (!label.contains("accept")) {
                 val target = clickableSelfOrAncestor(node)
@@ -6757,7 +6476,7 @@ private fun isRapidoAcceptedConfirmationScreen(
 
             Log.i(
                 TAG,
-                "Γ¢ö [Rapido Auto-Reject] verified skip control " +
+                "⛔ [Rapido Auto-Reject] verified skip control " +
                     "text='${result.text}', " +
                     "desc='${result.contentDescription}', " +
                     "id='${result.viewIdResourceName}', " +
@@ -6766,7 +6485,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         } else {
             Log.w(
                 TAG,
-                "Γ¢ö [Rapido Auto-Reject] safe skip control not found. " +
+                "⛔ [Rapido Auto-Reject] safe skip control not found. " +
                     "No blind click attempted."
             )
         }
@@ -7099,11 +6818,12 @@ private fun isRapidoAcceptedConfirmationScreen(
         fun fareRange(): String {
             val min = settings.minFare.toInt()
             return if (settings.maxFare > 0f) {
-                "\u20B9$min - \u20B9${settings.maxFare.toInt()}"
+                "₹$min–₹${settings.maxFare.toInt()}"
             } else {
-                "\u20B9$min+"
+                "₹$min+"
             }
         }
+
         // Priority modes should describe the mode that actually controlled acceptance.
         val hasActiveGoTo =
             settings.isGoToEnabled &&
@@ -7112,7 +6832,7 @@ private fun isRapidoAcceptedConfirmationScreen(
         if (hasActiveGoTo) {
             return buildString {
                 append("Mode: Go-To Priority")
-                if (fare > 0f) append("\nFare Γé╣${fare.toInt()}")
+                if (fare > 0f) append("\nFare ₹${fare.toInt()}")
                 if (pickup > 0f) append(" | Pickup ${km(pickup)}")
                 if (trip > 0f) append(" | Trip ${km(trip)}")
                 append("\nDestination matched active Go-To rule")
@@ -7125,7 +6845,7 @@ private fun isRapidoAcceptedConfirmationScreen(
                 if (pickup > 0f) {
                     append("\nPickup ${km(pickup)} matched")
                     if (settings.maxPickupDistanceKm > 0f) {
-                        append(" (Γëñ ${km(settings.maxPickupDistanceKm)})")
+                        append(" (≤ ${km(settings.maxPickupDistanceKm)})")
                     }
                 } else {
                     append("\nPickup matched")
@@ -7203,15 +6923,15 @@ private fun isRapidoAcceptedConfirmationScreen(
                 append("Mode: Filter 2")
 
                 append(
-                    "\nFare Γé╣${fare.toInt()} ΓëÑ Γé╣${settings.secondaryBothMinFare.toInt()}"
+                    "\nFare ₹${fare.toInt()} ≥ ₹${settings.secondaryBothMinFare.toInt()}"
                 )
 
                 append(
-                    " | Pickup ${km(pickup)} Γëñ ${km(settings.secondaryBothMaxPickupDistanceKm)}"
+                    " | Pickup ${km(pickup)} ≤ ${km(settings.secondaryBothMaxPickupDistanceKm)}"
                 )
 
                 append(
-                    " | Trip ${km(trip)} Γëñ ${km(settings.secondaryBothMaxDropDistanceKm)}"
+                    " | Trip ${km(trip)} ≤ ${km(settings.secondaryBothMaxDropDistanceKm)}"
                 )
             }
         }
@@ -7219,7 +6939,7 @@ private fun isRapidoAcceptedConfirmationScreen(
             com.example.model.FilterMode.FARE_ONLY -> {
                 buildString {
                     append("Mode: Fare Only")
-                    append("\nFare Γé╣${fare.toInt()} matched")
+                    append("\nFare ₹${fare.toInt()} matched")
                     append("  |  Saved range ${fareRange()}")
                 }
             }
@@ -7229,11 +6949,11 @@ private fun isRapidoAcceptedConfirmationScreen(
                     append("Mode: Distance Only")
                     append("\nPickup ${km(pickup)} matched")
                     if (settings.maxPickupDistanceKm > 0f) {
-                        append(" (Γëñ ${km(settings.maxPickupDistanceKm)})")
+                        append(" (≤ ${km(settings.maxPickupDistanceKm)})")
                     }
                     append(" | Trip ${km(trip)} matched")
                     if (settings.maxDropDistanceKm > 0f) {
-                        append(" (Γëñ ${km(settings.maxDropDistanceKm)})")
+                        append(" (≤ ${km(settings.maxDropDistanceKm)})")
                     }
                 }
             }
@@ -7241,15 +6961,15 @@ private fun isRapidoAcceptedConfirmationScreen(
             com.example.model.FilterMode.BOTH -> {
                 buildString {
                     append("Mode: Both")
-                    append("\nFare Γé╣${fare.toInt()} matched")
+                    append("\nFare ₹${fare.toInt()} matched")
                     append(" (${fareRange()})")
                     append(" | Pickup ${km(pickup)} matched")
                     if (settings.maxPickupDistanceKm > 0f) {
-                        append(" (Γëñ ${km(settings.maxPickupDistanceKm)})")
+                        append(" (≤ ${km(settings.maxPickupDistanceKm)})")
                     }
                     append(" | Trip ${km(trip)} matched")
                     if (settings.maxDropDistanceKm > 0f) {
-                        append(" (Γëñ ${km(settings.maxDropDistanceKm)})")
+                        append(" (≤ ${km(settings.maxDropDistanceKm)})")
                     }
                 }
             }
