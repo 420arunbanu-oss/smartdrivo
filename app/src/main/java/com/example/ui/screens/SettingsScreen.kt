@@ -166,6 +166,39 @@ fun SettingsScreen(
                 settings.secondaryBothMaxDropDistanceKm.toString()
         )
     }
+
+    var tertiaryMinFareText by rememberSaveable {
+        mutableStateOf(
+            if (settings.tertiaryBothMinFare % 1.0f == 0f)
+                settings.tertiaryBothMinFare.toInt().toString()
+            else
+                settings.tertiaryBothMinFare.toString()
+        )
+    }
+
+    var tertiaryMaxPickupText by rememberSaveable {
+        mutableStateOf(
+            if (settings.tertiaryBothMaxPickupDistanceKm % 1.0f == 0f)
+                settings.tertiaryBothMaxPickupDistanceKm.toInt().toString()
+            else
+                settings.tertiaryBothMaxPickupDistanceKm.toString()
+        )
+    }
+
+    var tertiaryMaxDropText by rememberSaveable {
+        mutableStateOf(
+            if (settings.tertiaryBothMaxDropDistanceKm % 1.0f == 0f)
+                settings.tertiaryBothMaxDropDistanceKm.toInt().toString()
+            else
+                settings.tertiaryBothMaxDropDistanceKm.toString()
+        )
+    }
+
+    // PLUS_AMOUNT_FILTER_UI_V1
+    var plusAmountMinText by rememberSaveable { mutableStateOf(if (settings.plusAmountMin % 1.0f == 0f) settings.plusAmountMin.toInt().toString() else settings.plusAmountMin.toString()) }
+    var plusAmountMaxPickupText by rememberSaveable { mutableStateOf(if (settings.plusAmountMaxPickupDistanceKm % 1.0f == 0f) settings.plusAmountMaxPickupDistanceKm.toInt().toString() else settings.plusAmountMaxPickupDistanceKm.toString()) }
+    var plusAmountMaxDropText by rememberSaveable { mutableStateOf(if (settings.plusAmountMaxDropDistanceKm % 1.0f == 0f) settings.plusAmountMaxDropDistanceKm.toInt().toString() else settings.plusAmountMaxDropDistanceKm.toString()) }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -212,529 +245,679 @@ fun SettingsScreen(
             item { Spacer(modifier = Modifier.height(4.dp)) }
 
             // 1. FASTEST MODE
+            // FASTEST_COMPACT_CARD_V1
+            // ACTIVE_ONLY_CARD_COLOR_V3
             item {
                 SectionHeader("1. FASTEST MODE")
 
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = CardBackground
+                        containerColor = if (settings.isFastestModeEnabled) BlueContainer else CardBackground
                     ),
                     shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, CardBorderDefault),
+                    border = BorderStroke(1.dp, if (settings.isFastestModeEnabled) BluePrimary else CardBorderDefault),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.padding(11.dp),
+                        verticalArrangement =
+                            Arrangement.spacedBy(9.dp)
                     ) {
-                        SettingToggleRow(
-                            icon = Icons.Default.ElectricBolt,
-                            title = "Fastest Mode",
-                            subtitle = if (settings.isFastestModeEnabled) {
-                                "ON — only Maximum Pickup Distance is checked"
-                            } else {
-                                "Accept every eligible ride using only Maximum Pickup Distance"
-                            },
-                            isChecked = settings.isFastestModeEnabled,
-                            onCheckedChange = { isFastest ->
-                                val currentPickup =
-                                    maxPickupText.toFloatOrNull()
-                                        ?.takeIf { it > 0f }
-                                        ?: settings.maxPickupDistanceKm
-                                            .takeIf { it > 0f }
-                                        ?: 3.0f
 
-                                maxPickupText =
-                                    if (currentPickup % 1.0f == 0f) {
-                                        currentPickup.toInt().toString()
-                                    } else {
-                                        currentPickup.toString()
-                                    }
-
-                                prefs.saveAppSettings(
-                                    settings.copy(
-                                        isFastestModeEnabled = isFastest,
-                                        maxPickupDistanceKm = currentPickup
-                                    )
-                                )
-
-                                hasUnsavedChanges = false
-                                showSavedSnackbar()
-                            }
-                        )
-
-                        if (settings.isFastestModeEnabled) {
-                            HorizontalDivider(
-                                color = CardBorderDefault
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement =
+                                Arrangement.SpaceBetween,
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
 
                             Column(
-                                verticalArrangement = Arrangement.spacedBy(7.dp)
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(30.dp)
-                                            .background(
-                                                BlueContainer,
-                                                RoundedCornerShape(10.dp)
+
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            Color.White.copy(
+                                                alpha = 0.75f
                                             ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Default.NearMe,
-                                            contentDescription = null,
-                                            tint = BluePrimary,
-                                            modifier = Modifier.size(17.dp)
+                                            RoundedCornerShape(9.dp)
                                         )
-                                    }
-
-                                    Spacer(
-                                        modifier = Modifier.width(9.dp)
+                                        .padding(
+                                            horizontal = 9.dp,
+                                            vertical = 5.dp
+                                        )
+                                ) {
+                                    Text(
+                                        text = "FASTEST",
+                                        fontSize = 10.sp,
+                                        fontWeight =
+                                            FontWeight.Bold,
+                                        color = BluePrimary
                                     )
-
-                                    Column(
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text(
-                                            text = "Maximum Pickup Distance",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = TextDarkPrimary
-                                        )
-
-                                        Text(
-                                            text = "Required while Fastest Mode is ON",
-                                            fontSize = 11.sp,
-                                            color = TextDarkSecondary
-                                        )
-                                    }
                                 }
 
-                                val pickupValue =
-                                    maxPickupText.toFloatOrNull()
-
-                                val pickupValid =
-                                    pickupValue != null &&
-                                        pickupValue > 0f
-
-                                OutlinedTextField(
-                                    value = maxPickupText,
-                                    onValueChange = { input ->
-                                        if (
-                                            input.isEmpty() ||
-                                            input.matches(
-                                                Regex("""^\d*\.?\d*$""")
-                                            )
-                                        ) {
-                                            maxPickupText = input
-                                            hasUnsavedChanges = true
-                                        }
-                                    },
-                                    label = {
-                                        Text(
-                                            "Maximum Pickup Distance (km) *",
-                                            fontSize = 12.sp
-                                        )
-                                    },
-                                    supportingText = {
-                                        if (!pickupValid) {
-                                            Text(
-                                                "Required: enter a value greater than 0 km",
-                                                color = Color(0xFFDC2626),
-                                                fontSize = 12.sp
-                                            )
-                                        } else {
-                                            Text(
-                                                "Fastest Mode will ignore Fare and Drop filters",
-                                                color = TextDarkSecondary,
-                                                fontSize = 12.sp
-                                            )
-                                        }
-                                    },
-                                    isError = !pickupValid,
-                                    placeholder = {
-                                        Text(
-                                            "3.0",
-                                            color = TextDarkTertiary,
-                                            fontSize = 12.sp
-                                        )
-                                    },
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Decimal
-                                    ),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = BluePrimary,
-                                        focusedLabelColor = BluePrimary,
-                                        unfocusedBorderColor = CardBorderDefault,
-                                        focusedTextColor = TextDarkPrimary,
-                                        unfocusedTextColor = TextDarkPrimary
-                                    )
+                                Spacer(
+                                    modifier =
+                                        Modifier.height(7.dp)
                                 )
 
-                                Button(
-                                    onClick = {
-                                        val maxPickup =
-                                            maxPickupText.toFloatOrNull()
+                                Text(
+                                    text = "Fastest Mode",
+                                    fontWeight =
+                                        FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = TextDarkPrimary
+                                )
 
+                                Text(
+                                    text =
+                                        "Pickup-only speed option",
+                                    fontSize = 11.sp,
+                                    color = TextDarkSecondary
+                                )
+                            }
+
+                            Row(
+                                verticalAlignment =
+                                    Alignment.CenterVertically
+                            ) {
+
+                                Text(
+                                    text =
                                         if (
-                                            maxPickup != null &&
-                                            maxPickup > 0f
-                                        ) {
-                                            prefs.saveAppSettings(
-                                                settings.copy(
-                                                    isFastestModeEnabled = true,
-                                                    maxPickupDistanceKm = maxPickup
-                                                )
+                                            settings
+                                                .isFastestModeEnabled
+                                        )
+                                            "ON"
+                                        else
+                                            "OFF",
+                                    fontSize = 11.sp,
+                                    fontWeight =
+                                        FontWeight.Bold,
+                                    color =
+                                        if (
+                                            settings
+                                                .isFastestModeEnabled
+                                        )
+                                            BluePrimary
+                                        else
+                                            TextDarkSecondary
+                                )
+
+                                Spacer(
+                                    modifier =
+                                        Modifier.width(7.dp)
+                                )
+
+                                Switch(
+                                    checked =
+                                        settings
+                                            .isFastestModeEnabled,
+                                    onCheckedChange = {
+                                        enabled ->
+
+                                        val currentPickup =
+                                            maxPickupText
+                                                .toFloatOrNull()
+                                                ?.takeIf {
+                                                    it > 0f
+                                                }
+                                                ?: settings
+                                                    .maxPickupDistanceKm
+                                                    .takeIf {
+                                                        it > 0f
+                                                    }
+                                                ?: 3.0f
+
+                                        maxPickupText =
+                                            if (
+                                                currentPickup %
+                                                    1.0f ==
+                                                    0f
+                                            ) {
+                                                currentPickup
+                                                    .toInt()
+                                                    .toString()
+                                            } else {
+                                                currentPickup
+                                                    .toString()
+                                            }
+
+                                        prefs.saveAppSettings(
+                                            settings.copy(
+                                                isFastestModeEnabled =
+                                                    enabled,
+                                                maxPickupDistanceKm =
+                                                    currentPickup
                                             )
+                                        )
 
-                                            hasUnsavedChanges = false
-                                            showSavedSnackbar()
-                                        }
+                                        hasUnsavedChanges =
+                                            false
+
+                                        showSavedSnackbar()
                                     },
-                                    enabled = pickupValid,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(50.dp)
-                                        .testTag("save_settings_button"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = BluePrimary,
-                                        contentColor = Color.White
-                                    )
-                                ) {
-                                    Icon(
-                                        Icons.Default.CheckCircle,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(17.dp)
-                                    )
-
-                                    Spacer(
-                                        modifier = Modifier.width(8.dp)
-                                    )
-
-                                    Text(
-                                        text = "Save Maximum Pickup",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    )
-                                }
+                                    colors =
+                                        SwitchDefaults.colors(
+                                            checkedThumbColor =
+                                                Color.White,
+                                            checkedTrackColor =
+                                                BluePrimary,
+                                            uncheckedThumbColor =
+                                                Color.White,
+                                            uncheckedTrackColor =
+                                                Color(
+                                                    0xFFBDBDBD
+                                                )
+                                        )
+                                )
                             }
-                        } else {
-                            Text(
-                                text = "Fare and Distance filters are managed from the Home screen.",
-                                fontSize = 11.sp,
-                                color = TextDarkSecondary
-                            )
                         }
-                    }
-                }
-            }
-            // 2. SEPARATE ORDER FILTER - BOTH ONLY
-            item {
-                SectionHeader("2. ORDER FILTER 2")
-
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = CardBackground
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        CardBorderDefault
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-
-                        val secondaryMinFare =
-                            secondaryMinFareText.toFloatOrNull()
-
-                        val secondaryMaxPickup =
-                            secondaryMaxPickupText.toFloatOrNull()
-
-                        val secondaryMaxDrop =
-                            secondaryMaxDropText.toFloatOrNull()
-
-                        val secondaryValid =
-                            secondaryMinFare != null &&
-                                secondaryMinFare > 0f &&
-                                secondaryMaxPickup != null &&
-                                secondaryMaxPickup > 0f &&
-                                secondaryMaxDrop != null &&
-                                secondaryMaxDrop > 0f
-
-                        SettingToggleRow(
-                            icon = Icons.Default.Tune,
-                            title = "Order Filter 2",
-                            subtitle =
-                                if (settings.isSecondaryBothFilterEnabled)
-                                    "ON — Home Filter OR Order Filter 2 can match"
-                                else
-                                    "OFF — Order Filter 2 disabled",
-                            isChecked =
-                                settings.isSecondaryBothFilterEnabled,
-                            onCheckedChange = { enabled ->
-
-                                if (enabled && !secondaryValid) {
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            "Enter valid Minimum Fare, Pickup and Drop first"
-                                        )
-                                    }
-                                } else {
-                                    prefs.saveAppSettings(
-                                        settings.copy(
-                                            isSecondaryBothFilterEnabled =
-                                                enabled,
-                                            secondaryBothMinFare =
-                                                secondaryMinFare
-                                                    ?: settings.secondaryBothMinFare,
-                                            secondaryBothMaxPickupDistanceKm =
-                                                secondaryMaxPickup
-                                                    ?: settings.secondaryBothMaxPickupDistanceKm,
-                                            secondaryBothMaxDropDistanceKm =
-                                                secondaryMaxDrop
-                                                    ?: settings.secondaryBothMaxDropDistanceKm
-                                        )
-                                    )
-
-                                    showSavedSnackbar()
-                                }
-                            }
-                        )
-
-                        HorizontalDivider(
-                            color = CardBorderDefault
-                        )
 
                         Text(
                             text =
-                                "All 3 must match: Fare ≥ Minimum • Pickup ≤ Maximum • Drop ≤ Maximum",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
+                                "Only Maximum Pickup Distance must match",
+                            fontSize = 10.sp,
+                            fontWeight =
+                                FontWeight.SemiBold,
                             color = BluePrimary
                         )
 
-                        Text(
-                            text =
-                                "Final rule: Home Filter OR Order Filter 2 = eligible order.",
-                            fontSize = 11.sp,
-                            color = TextDarkSecondary
-                        )
-
-                        OutlinedTextField(
-                            value = secondaryMinFareText,
-                            onValueChange = { value ->
-                                if (
-                                    value.isEmpty() ||
-                                    value.matches(
-                                        Regex("""^\d*\.?\d*$""")
-                                    )
-                                ) {
-                                    secondaryMinFareText = value
-                                }
-                            },
-                            label = {
-                                Text(
-                                    "Minimum Fare (₹)",
-                                    fontSize = 12.sp
-                                )
-                            },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Decimal
-                            ),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = BluePrimary,
-                                focusedLabelColor = BluePrimary,
-                                unfocusedBorderColor = CardBorderDefault,
-                                focusedTextColor = TextDarkPrimary,
-                                unfocusedTextColor = TextDarkPrimary
-                            )
-                        )
-
-                        OutlinedTextField(
-                            value = secondaryMaxPickupText,
-                            onValueChange = { value ->
-                                if (
-                                    value.isEmpty() ||
-                                    value.matches(
-                                        Regex("""^\d*\.?\d*$""")
-                                    )
-                                ) {
-                                    secondaryMaxPickupText = value
-                                }
-                            },
-                            label = {
-                                Text(
-                                    "Maximum Pickup (km)",
-                                    fontSize = 12.sp
-                                )
-                            },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Decimal
-                            ),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = BluePrimary,
-                                focusedLabelColor = BluePrimary,
-                                unfocusedBorderColor = CardBorderDefault,
-                                focusedTextColor = TextDarkPrimary,
-                                unfocusedTextColor = TextDarkPrimary
-                            )
-                        )
-
-                        OutlinedTextField(
-                            value = secondaryMaxDropText,
-                            onValueChange = { value ->
-                                if (
-                                    value.isEmpty() ||
-                                    value.matches(
-                                        Regex("""^\d*\.?\d*$""")
-                                    )
-                                ) {
-                                    secondaryMaxDropText = value
-                                }
-                            },
-                            label = {
-                                Text(
-                                    "Maximum Drop (km)",
-                                    fontSize = 12.sp
-                                )
-                            },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Decimal
-                            ),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = BluePrimary,
-                                focusedLabelColor = BluePrimary,
-                                unfocusedBorderColor = CardBorderDefault,
-                                focusedTextColor = TextDarkPrimary,
-                                unfocusedTextColor = TextDarkPrimary
-                            )
-                        )
-
-                        Button(
-                            onClick = {
-                                val minFare =
-                                    secondaryMinFareText.toFloatOrNull()
-                                val maxPickup =
-                                    secondaryMaxPickupText.toFloatOrNull()
-                                val maxDrop =
-                                    secondaryMaxDropText.toFloatOrNull()
-
-                                if (
-                                    minFare != null &&
-                                    minFare > 0f &&
-                                    maxPickup != null &&
-                                    maxPickup > 0f &&
-                                    maxDrop != null &&
-                                    maxDrop > 0f
-                                ) {
-                                    prefs.saveAppSettings(
-                                        settings.copy(
-                                            secondaryBothMinFare = minFare,
-                                            secondaryBothMaxPickupDistanceKm =
-                                                maxPickup,
-                                            secondaryBothMaxDropDistanceKm =
-                                                maxDrop
-                                        )
-                                    )
-
-                                    showSavedSnackbar()
-                                }
-                            },
-                            enabled = secondaryValid,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                                .testTag(
-                                    "save_secondary_both_filter"
-                                ),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = BluePrimary,
-                                contentColor = Color.White
-                            )
+                        if (
+                            settings.isFastestModeEnabled
                         ) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                modifier = Modifier.size(17.dp)
+
+                            val pickupValue =
+                                maxPickupText
+                                    .toFloatOrNull()
+
+                            val pickupValid =
+                                pickupValue != null &&
+                                    pickupValue > 0f
+
+                            OutlinedTextField(
+                                value = maxPickupText,
+                                onValueChange = {
+                                    input ->
+
+                                    if (
+                                        input.isEmpty() ||
+                                        input.matches(
+                                            Regex(
+                                                """^\d*\.?\d*$"""
+                                            )
+                                        )
+                                    ) {
+                                        maxPickupText =
+                                            input
+
+                                        hasUnsavedChanges =
+                                            true
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        "Maximum Pickup (km)",
+                                        fontSize = 10.sp
+                                    )
+                                },
+                                keyboardOptions =
+                                    KeyboardOptions(
+                                        keyboardType =
+                                            KeyboardType.Decimal
+                                    ),
+                                singleLine = true,
+                                modifier =
+                                    Modifier.fillMaxWidth(),
+                                shape =
+                                    RoundedCornerShape(
+                                        10.dp
+                                    ),
+                                colors =
+                                    OutlinedTextFieldDefaults
+                                        .colors(
+                                            focusedBorderColor =
+                                                BluePrimary,
+                                            focusedLabelColor =
+                                                BluePrimary,
+                                            unfocusedBorderColor =
+                                                CardBorderDefault,
+                                            focusedTextColor =
+                                                TextDarkPrimary,
+                                            unfocusedTextColor =
+                                                TextDarkPrimary
+                                        )
                             )
 
-                            Spacer(
-                                modifier = Modifier.width(8.dp)
-                            )
+                            Button(
+                                onClick = {
 
-                            Text(
-                                text = "Save Order Filter",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
-                            )
+                                    val maxPickup =
+                                        maxPickupText
+                                            .toFloatOrNull()
+
+                                    if (
+                                        maxPickup != null &&
+                                        maxPickup > 0f
+                                    ) {
+                                        prefs.saveAppSettings(
+                                            settings.copy(
+                                                isFastestModeEnabled =
+                                                    true,
+                                                maxPickupDistanceKm =
+                                                    maxPickup
+                                            )
+                                        )
+
+                                        hasUnsavedChanges =
+                                            false
+
+                                        showSavedSnackbar()
+                                    }
+                                },
+                                enabled = pickupValid,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp),
+                                shape =
+                                    RoundedCornerShape(
+                                        11.dp
+                                    ),
+                                colors =
+                                    ButtonDefaults
+                                        .buttonColors(
+                                            containerColor =
+                                                BluePrimary,
+                                            contentColor =
+                                                Color.White
+                                        )
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    modifier =
+                                        Modifier.size(16.dp)
+                                )
+
+                                Spacer(
+                                    modifier =
+                                        Modifier.width(7.dp)
+                                )
+
+                                Text(
+                                    text =
+                                        "Save Fastest Mode",
+                                    fontWeight =
+                                        FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
                     }
                 }
             }
+            // 2. ORDER FILTER 2 + ORDER FILTER 3
+            item {
+                SectionHeader("2. ORDER FILTERS")
+
+                OrderFilterCompactCard(
+                    badge = "FILTER 2",
+                    title = "Order Filter 2",
+                    subtitle = "Second ride option",
+                    isChecked = settings.isSecondaryBothFilterEnabled,
+                    minFareText = secondaryMinFareText,
+                    maxPickupText = secondaryMaxPickupText,
+                    maxDropText = secondaryMaxDropText,
+                    onMinFareChange = { secondaryMinFareText = it },
+                    onMaxPickupChange = { secondaryMaxPickupText = it },
+                    onMaxDropChange = { secondaryMaxDropText = it },
+                    onCheckedChange = { enabled ->
+                        val minFare = secondaryMinFareText.toFloatOrNull()
+                        val pickup = secondaryMaxPickupText.toFloatOrNull()
+                        val drop = secondaryMaxDropText.toFloatOrNull()
+
+                        val valid =
+                            minFare != null && minFare > 0f &&
+                                pickup != null && pickup > 0f &&
+                                drop != null && drop > 0f
+
+                        if (enabled && !valid) {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    "Enter valid Filter 2 values first"
+                                )
+                            }
+                        } else {
+                            prefs.saveAppSettings(
+                                settings.copy(
+                                    isSecondaryBothFilterEnabled = enabled,
+                                    secondaryBothMinFare =
+                                        minFare ?: settings.secondaryBothMinFare,
+                                    secondaryBothMaxPickupDistanceKm =
+                                        pickup ?: settings.secondaryBothMaxPickupDistanceKm,
+                                    secondaryBothMaxDropDistanceKm =
+                                        drop ?: settings.secondaryBothMaxDropDistanceKm
+                                )
+                            )
+                            showSavedSnackbar()
+                        }
+                    },
+                    onSave = {
+                        val minFare = secondaryMinFareText.toFloatOrNull()
+                        val pickup = secondaryMaxPickupText.toFloatOrNull()
+                        val drop = secondaryMaxDropText.toFloatOrNull()
+
+                        if (
+                            minFare != null && minFare > 0f &&
+                            pickup != null && pickup > 0f &&
+                            drop != null && drop > 0f
+                        ) {
+                            prefs.saveAppSettings(
+                                settings.copy(
+                                    secondaryBothMinFare = minFare,
+                                    secondaryBothMaxPickupDistanceKm = pickup,
+                                    secondaryBothMaxDropDistanceKm = drop
+                                )
+                            )
+                            showSavedSnackbar()
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OrderFilterCompactCard(
+                    badge = "FILTER 3",
+                    title = "Order Filter 3",
+                    subtitle = "Third ride option",
+                    isChecked = settings.isTertiaryBothFilterEnabled,
+                    minFareText = tertiaryMinFareText,
+                    maxPickupText = tertiaryMaxPickupText,
+                    maxDropText = tertiaryMaxDropText,
+                    onMinFareChange = { tertiaryMinFareText = it },
+                    onMaxPickupChange = { tertiaryMaxPickupText = it },
+                    onMaxDropChange = { tertiaryMaxDropText = it },
+                    onCheckedChange = { enabled ->
+                        val minFare = tertiaryMinFareText.toFloatOrNull()
+                        val pickup = tertiaryMaxPickupText.toFloatOrNull()
+                        val drop = tertiaryMaxDropText.toFloatOrNull()
+
+                        val valid =
+                            minFare != null && minFare > 0f &&
+                                pickup != null && pickup > 0f &&
+                                drop != null && drop > 0f
+
+                        if (enabled && !valid) {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    "Enter valid Filter 3 values first"
+                                )
+                            }
+                        } else {
+                            prefs.saveAppSettings(
+                                settings.copy(
+                                    isTertiaryBothFilterEnabled = enabled,
+                                    tertiaryBothMinFare =
+                                        minFare ?: settings.tertiaryBothMinFare,
+                                    tertiaryBothMaxPickupDistanceKm =
+                                        pickup ?: settings.tertiaryBothMaxPickupDistanceKm,
+                                    tertiaryBothMaxDropDistanceKm =
+                                        drop ?: settings.tertiaryBothMaxDropDistanceKm
+                                )
+                            )
+                            showSavedSnackbar()
+                        }
+                    },
+                    onSave = {
+                        val minFare = tertiaryMinFareText.toFloatOrNull()
+                        val pickup = tertiaryMaxPickupText.toFloatOrNull()
+                        val drop = tertiaryMaxDropText.toFloatOrNull()
+
+                        if (
+                            minFare != null && minFare > 0f &&
+                            pickup != null && pickup > 0f &&
+                            drop != null && drop > 0f
+                        ) {
+                            prefs.saveAppSettings(
+                                settings.copy(
+                                    tertiaryBothMinFare = minFare,
+                                    tertiaryBothMaxPickupDistanceKm = pickup,
+                                    tertiaryBothMaxDropDistanceKm = drop
+                                )
+                            )
+                            showSavedSnackbar()
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OrderFilterCompactCard(
+                    badge = "+ AMOUNT",
+                    title = "+ Amount Filter",
+                    subtitle = "Green +₹ amount option",
+                    isChecked = settings.isPlusAmountFilterEnabled,
+                    minFareText = plusAmountMinText,
+                    maxPickupText = plusAmountMaxPickupText,
+                    maxDropText = plusAmountMaxDropText,
+                    primaryLabel = "Min + Amount ₹",
+                    ruleText = "+ Amount + Pickup + Drop must all match",
+                    onMinFareChange = { plusAmountMinText = it },
+                    onMaxPickupChange = { plusAmountMaxPickupText = it },
+                    onMaxDropChange = { plusAmountMaxDropText = it },
+                    onCheckedChange = { enabled ->
+                        val amount = plusAmountMinText.toFloatOrNull()
+                        val pickup = plusAmountMaxPickupText.toFloatOrNull()
+                        val drop = plusAmountMaxDropText.toFloatOrNull()
+                        val valid = amount != null && amount > 0f && pickup != null && pickup > 0f && drop != null && drop > 0f
+                        if (enabled && !valid) {
+                            coroutineScope.launch { snackbarHostState.showSnackbar("Enter valid + Amount filter values first") }
+                        } else {
+                            prefs.saveAppSettings(settings.copy(
+                                isPlusAmountFilterEnabled = enabled,
+                                plusAmountMin = amount ?: settings.plusAmountMin,
+                                plusAmountMaxPickupDistanceKm = pickup ?: settings.plusAmountMaxPickupDistanceKm,
+                                plusAmountMaxDropDistanceKm = drop ?: settings.plusAmountMaxDropDistanceKm
+                            ))
+                            showSavedSnackbar()
+                        }
+                    },
+                    onSave = {
+                        val amount = plusAmountMinText.toFloatOrNull()
+                        val pickup = plusAmountMaxPickupText.toFloatOrNull()
+                        val drop = plusAmountMaxDropText.toFloatOrNull()
+                        if (amount != null && amount > 0f && pickup != null && pickup > 0f && drop != null && drop > 0f) {
+                            prefs.saveAppSettings(settings.copy(
+                                plusAmountMin = amount,
+                                plusAmountMaxPickupDistanceKm = pickup,
+                                plusAmountMaxDropDistanceKm = drop
+                            ))
+                            showSavedSnackbar()
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text =
+                        "Final rule: Home Filter OR Order Filter 2 OR Order Filter 3 OR + Amount Filter = eligible order.",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = BluePrimary
+                )
+            }
             // 3. BUNDLE ORDER
+            // BUNDLE_COMPACT_CARD_V1
             item {
                 SectionHeader("3. BUNDLE ORDER")
+
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = CardBackground),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (settings.isBundleOrderEnabled) BlueContainer else CardBackground
+                    ),
                     shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, CardBorderDefault),
+                    border = BorderStroke(1.dp, if (settings.isBundleOrderEnabled) BluePrimary else CardBorderDefault),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier =
+                            Modifier.padding(11.dp),
+                        verticalArrangement =
+                            Arrangement.spacedBy(9.dp)
                     ) {
-                        SettingToggleRow(
-                            icon = Icons.Default.Layers,
-                            title = "Bundle Order",
-                            subtitle = if (settings.isBundleOrderEnabled) {
-                                "ON — Rapido bundle orders use saved Fare / Distance / Area filters"
-                            } else {
-                                "OFF — Bundle orders stay manual and will not be auto-accepted"
-                            },
-                            isChecked = settings.isBundleOrderEnabled,
-                            onCheckedChange = { enabled ->
-                                prefs.saveAppSettings(
-                                    settings.copy(isBundleOrderEnabled = enabled)
+
+                        Row(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            horizontalArrangement =
+                                Arrangement.SpaceBetween,
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+
+                            Column(
+                                modifier =
+                                    Modifier.weight(1f)
+                            ) {
+
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            Color.White.copy(
+                                                alpha = 0.75f
+                                            ),
+                                            RoundedCornerShape(
+                                                9.dp
+                                            )
+                                        )
+                                        .padding(
+                                            horizontal = 9.dp,
+                                            vertical = 5.dp
+                                        )
+                                ) {
+                                    Text(
+                                        text = "BUNDLE",
+                                        fontSize = 10.sp,
+                                        fontWeight =
+                                            FontWeight.Bold,
+                                        color = BluePrimary
+                                    )
+                                }
+
+                                Spacer(
+                                    modifier =
+                                        Modifier.height(7.dp)
                                 )
-                                showSavedSnackbar()
+
+                                Text(
+                                    text = "Bundle Order",
+                                    fontWeight =
+                                        FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = TextDarkPrimary
+                                )
+
+                                Text(
+                                    text =
+                                        "Multiple-order ride option",
+                                    fontSize = 11.sp,
+                                    color = TextDarkSecondary
+                                )
                             }
-                        )
+
+                            Row(
+                                verticalAlignment =
+                                    Alignment.CenterVertically
+                            ) {
+
+                                Text(
+                                    text =
+                                        if (
+                                            settings
+                                                .isBundleOrderEnabled
+                                        )
+                                            "ON"
+                                        else
+                                            "OFF",
+                                    fontSize = 11.sp,
+                                    fontWeight =
+                                        FontWeight.Bold,
+                                    color =
+                                        if (
+                                            settings
+                                                .isBundleOrderEnabled
+                                        )
+                                            BluePrimary
+                                        else
+                                            TextDarkSecondary
+                                )
+
+                                Spacer(
+                                    modifier =
+                                        Modifier.width(7.dp)
+                                )
+
+                                Switch(
+                                    checked =
+                                        settings
+                                            .isBundleOrderEnabled,
+                                    onCheckedChange = {
+                                        enabled ->
+
+                                        prefs.saveAppSettings(
+                                            settings.copy(
+                                                isBundleOrderEnabled =
+                                                    enabled
+                                            )
+                                        )
+
+                                        showSavedSnackbar()
+                                    },
+                                    colors =
+                                        SwitchDefaults.colors(
+                                            checkedThumbColor =
+                                                Color.White,
+                                            checkedTrackColor =
+                                                BluePrimary,
+                                            uncheckedThumbColor =
+                                                Color.White,
+                                            uncheckedTrackColor =
+                                                Color(
+                                                    0xFFBDBDBD
+                                                )
+                                        )
+                                )
+                            }
+                        }
 
                         Text(
-                            text = if (settings.isBundleOrderEnabled) {
-                                "Bundle enabled: matching orders may be auto-accepted normally."
-                            } else {
-                                "Bundle disabled: even if other filters match, SmartDrivo will leave the order for manual action."
-                            },
-                            fontSize = 11.sp,
-                            color = TextDarkSecondary
+                            text =
+                                if (
+                                    settings
+                                        .isBundleOrderEnabled
+                                ) {
+                                    "Bundle orders use saved Fare + Distance + Area filters"
+                                } else {
+                                    "Bundle orders stay manual and will not be auto-accepted"
+                                },
+                            fontSize = 10.sp,
+                            fontWeight =
+                                FontWeight.SemiBold,
+                            color =
+                                if (
+                                    settings
+                                        .isBundleOrderEnabled
+                                )
+                                    BluePrimary
+                                else
+                                    TextDarkSecondary
                         )
                     }
                 }
             }
-
             // 4. SUPPORTED PLATFORMS (Rapido, Uber, Ola toggles)
             item {
                 SectionHeader("4. SUPPORTED PLATFORMS")
@@ -763,20 +946,8 @@ fun SettingsScreen(
 
                         HorizontalDivider(color = CardBorderDefault)
 
-                        // Uber Toggle
-                        SettingToggleRow(
-                            icon = Icons.Default.NearMe,
-                            iconTint = PlatformUber,
-                            title = "Uber",
-                            subtitle = "Auto-accept orders for Uber Driver",
-                            isChecked = settings.uberEnabled,
-                            onCheckedChange = { isEnabled ->
-                                prefs.saveAppSettings(settings.copy(uberEnabled = isEnabled))
-                                showSavedSnackbar()
-                            }
-                        )
-
-                        HorizontalDivider(color = CardBorderDefault)
+                        // UBER_DISABLED_OLA_FOCUS_V1
+                        // Uber hidden while SmartDrivo focuses on Ola.
 
                         // Ola Toggle
                         SettingToggleRow(
@@ -801,6 +972,222 @@ fun SettingsScreen(
     }
 }
 
+@Composable
+private fun OrderFilterCompactCard(
+    badge: String,
+    title: String,
+    subtitle: String,
+    isChecked: Boolean,
+    minFareText: String,
+    maxPickupText: String,
+    maxDropText: String,
+    primaryLabel: String = "Min Fare ₹",
+    ruleText: String = "Fare + Pickup + Drop must all match",
+    onMinFareChange: (String) -> Unit,
+    onMaxPickupChange: (String) -> Unit,
+    onMaxDropChange: (String) -> Unit,
+    onCheckedChange: (Boolean) -> Unit,
+    onSave: () -> Unit
+) {
+    val minFare = minFareText.toFloatOrNull()
+    val maxPickup = maxPickupText.toFloatOrNull()
+    val maxDrop = maxDropText.toFloatOrNull()
+
+    val valid =
+        minFare != null && minFare > 0f &&
+            maxPickup != null && maxPickup > 0f &&
+            maxDrop != null && maxDrop > 0f
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor =
+                if (isChecked) BlueContainer else CardBackground
+        ),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(
+            1.dp,
+            if (isChecked) BluePrimary else CardBorderDefault
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(11.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                Color.White.copy(alpha = 0.75f),
+                                RoundedCornerShape(9.dp)
+                            )
+                            .padding(
+                                horizontal = 9.dp,
+                                vertical = 5.dp
+                            )
+                    ) {
+                        Text(
+                            text = badge,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BluePrimary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(7.dp))
+
+                    Text(
+                        text = title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = TextDarkPrimary
+                    )
+
+                    Text(
+                        text = subtitle,
+                        fontSize = 11.sp,
+                        color = TextDarkSecondary
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isChecked) "ON" else "OFF",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color =
+                            if (isChecked) BluePrimary
+                            else TextDarkSecondary
+                    )
+
+                    Spacer(modifier = Modifier.width(7.dp))
+
+                    Switch(
+                        checked = isChecked,
+                        onCheckedChange = onCheckedChange,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = BluePrimary,
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = Color(0xFFBDBDBD)
+                        )
+                    )
+                }
+            }
+
+            Text(
+                text = ruleText,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = BluePrimary
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                CompactFilterField(
+                    value = minFareText,
+                    label = primaryLabel,
+                    modifier = Modifier.weight(1f),
+                    onValueChange = onMinFareChange
+                )
+
+                CompactFilterField(
+                    value = maxPickupText,
+                    label = "Max Pickup",
+                    modifier = Modifier.weight(1f),
+                    onValueChange = onMaxPickupChange
+                )
+
+                CompactFilterField(
+                    value = maxDropText,
+                    label = "Max Drop",
+                    modifier = Modifier.weight(1f),
+                    onValueChange = onMaxDropChange
+                )
+            }
+
+            Button(
+                onClick = onSave,
+                enabled = valid,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                shape = RoundedCornerShape(11.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = BluePrimary,
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+
+                Spacer(modifier = Modifier.width(7.dp))
+
+                Text(
+                    text = "Save $title",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactFilterField(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    onValueChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { input ->
+            if (
+                input.isEmpty() ||
+                input.matches(
+                    Regex("""^\d*\.?\d*$""")
+                )
+            ) {
+                onValueChange(input)
+            }
+        },
+        label = {
+            Text(
+                text = label,
+                fontSize = 9.sp,
+                maxLines = 1
+            )
+        },
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Decimal
+        ),
+        singleLine = true,
+        modifier = modifier,
+        shape = RoundedCornerShape(10.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = BluePrimary,
+            focusedLabelColor = BluePrimary,
+            unfocusedBorderColor = CardBorderDefault,
+            focusedTextColor = TextDarkPrimary,
+            unfocusedTextColor = TextDarkPrimary
+        )
+    )
+}
 @Composable
 private fun SectionHeader(title: String) {
     Text(

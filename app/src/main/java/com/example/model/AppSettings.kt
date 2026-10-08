@@ -66,6 +66,20 @@ data class AppSettings(
     val secondaryBothMinFare: Float = 50f,
     val secondaryBothMaxPickupDistanceKm: Float = 3.0f,
     val secondaryBothMaxDropDistanceKm: Float = 7.5f,
+
+    // ORDER_FILTER_3_V1
+    // Independent third filter: Fare + Pickup + Drop must all match.
+    val isTertiaryBothFilterEnabled: Boolean = false,
+    val tertiaryBothMinFare: Float = 50f,
+    val tertiaryBothMaxPickupDistanceKm: Float = 3.0f,
+    val tertiaryBothMaxDropDistanceKm: Float = 7.5f,
+
+    // PLUS_AMOUNT_FILTER_V1
+    val isPlusAmountFilterEnabled: Boolean = false,
+    val plusAmountMin: Float = 10f,
+    val plusAmountMaxPickupDistanceKm: Float = 3.0f,
+    val plusAmountMaxDropDistanceKm: Float = 7.5f,
+
     // Platforms enabled
     val rapidoEnabled: Boolean = true,
     val uberEnabled: Boolean = true,
