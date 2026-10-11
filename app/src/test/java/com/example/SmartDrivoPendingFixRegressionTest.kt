@@ -56,15 +56,38 @@ class SmartDrivoPendingFixRegressionTest {
 
     @Test fun nextVerifiedOrderNotHeldByPreviousRetries() {
         val guard = RapidoVerifiedClickGuard()
-        assertTrue(guard.tryAllow("order1", 1, true))
-        assertFalse(guard.tryAllow("order1", 1, true))
-        assertTrue(guard.tryAllow("order1", 2, true))
-        assertTrue(guard.tryAllow("order1", 3, true))
-        assertTrue(guard.tryAllow("order2", 1, true))
-        assertFalse(guard.tryAllow("order2", 3, true))
-        assertTrue(guard.tryAllow("order2", 2, true))
-        assertFalse(guard.tryAllow("order2", 6, true))
-        assertFalse(guard.tryAllow("order3", 1, false))
+        val first = guard.beginNewPopup()
+        assertTrue(guard.tryAllow(first, 1, true))
+        assertFalse(guard.tryAllow(first, 1, true))
+        assertTrue(guard.tryAllow(first, 2, true))
+        assertTrue(guard.tryAllow(first, 3, true))
+
+        // A genuinely new popup must get first click, even if the database
+        // dedupes/reuses its History record ID or both trips look identical.
+        val second = guard.beginNewPopup()
+        assertTrue(guard.tryAllow(second, 1, true))
+        assertFalse(guard.tryAllow(first, 4, true)) // stale prior retry
+        assertFalse(guard.tryAllow(second, 3, true)) // cannot skip attempt
+        assertTrue(guard.tryAllow(second, 2, true))
+        assertTrue(guard.tryAllow(second, 3, true))
+        assertTrue(guard.tryAllow(second, 4, true))
+        assertTrue(guard.tryAllow(second, 5, true))
+        assertFalse(guard.tryAllow(second, 6, true))
+        assertFalse(guard.tryAllow(second, 5, true))
+        assertFalse(guard.tryAllow(0L, 1, true))
+        assertFalse(guard.tryAllow(guard.beginNewPopup(), 1, false))
+    }
+
+    @Test fun newPopupInvalidatesOldVerificationWithoutIgnoringNewOffer() {
+        val guard = RapidoVerifiedClickGuard()
+        val oldPopup = guard.beginNewPopup()
+        assertTrue(guard.tryAllow(oldPopup, 1, true))
+        val currentPopup = guard.beginNewPopup()
+        assertFalse(guard.isCurrent(oldPopup))
+        assertTrue(guard.isCurrent(currentPopup))
+        assertTrue(guard.tryAllow(currentPopup, 1, true))
+        assertFalse(guard.tryAllow(oldPopup, 2, true))
+        assertTrue(guard.tryAllow(currentPopup, 2, true))
     }
 
     @Test fun priorityCannotSaveEmptyHistory() {

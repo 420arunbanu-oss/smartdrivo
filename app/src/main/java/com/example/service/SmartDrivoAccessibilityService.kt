@@ -719,10 +719,10 @@ private val processingTimeoutRunnable = Runnable {
         com.example.engine.RapidoVerifiedClickGuard()
 
     private fun canExecuteVerifiedRapidoClick(
-        orderId: String,
+        popupSession: Long,
         attemptNumber: Int
     ): Boolean = rapidoVerifiedClickGuard.tryAllow(
-        orderId = orderId,
+        popupSession = popupSession,
         attemptNumber = attemptNumber,
         autoAcceptEnabled = preferencesManager.isAutoAcceptEnabled
     )
@@ -7644,6 +7644,7 @@ private val processingTimeoutRunnable = Runnable {
                     orderRoot = root,
                     prevalidatedAcceptNode = snapshot.acceptNode,
                     historyRecordId = recordId,
+                    verifiedPopupSession = rapidoVerifiedClickGuard.beginNewPopup(),
                     acceptedHistoryReason = plusReason
                 )
                 return
@@ -7820,6 +7821,7 @@ private val processingTimeoutRunnable = Runnable {
                 prevalidatedAcceptNode =
                     snapshot.acceptNode,
                 historyRecordId = recordId,
+                verifiedPopupSession = rapidoVerifiedClickGuard.beginNewPopup(),
                 acceptedHistoryReason =
                     acceptedHistoryReason
             )
@@ -7845,7 +7847,8 @@ private val processingTimeoutRunnable = Runnable {
         attemptNumber: Int = 1,
         prevalidatedAcceptNode: AccessibilityNodeInfo? = null,
         historyRecordId: String? = null,
-        acceptedHistoryReason: String? = null
+        acceptedHistoryReason: String? = null,
+        verifiedPopupSession: Long? = null
     ) {
         // HISTORY_PINNED_RECORD_V2
         // Keep every retry/final status attached to the same real ride.
@@ -7882,21 +7885,21 @@ private val processingTimeoutRunnable = Runnable {
         val now = System.currentTimeMillis()
         lastRapidoAttemptTime = now
 
-        if (!canExecuteVerifiedRapidoClick(pinnedRecordId, attemptNumber)) {
-            Log.w(TAG, "Rapido auto-accept paused by anti-spam safety limit")
+        val livePopupSession =
+            verifiedPopupSession ?: if (attemptNumber == 1) {
+                rapidoVerifiedClickGuard.beginNewPopup()
+            } else {
+                -1L
+            }
 
-            val recordId = pinnedRecordId
-
-
-            onOrderDecisionFast(
-                recordId = recordId,
-                candidate = candidate,
-                status = OrderStatus.IGNORED,
-                reasonCode = "CLICK_SAFETY_LIMIT",
-                reasonText = "Safety click limit active - order left for manual action"
+        if (!canExecuteVerifiedRapidoClick(livePopupSession, attemptNumber)) {
+            // Duplicate/stale callback from an older popup: no click, no
+            // misleading IGNORED History, and no reset of the newer popup.
+            Log.w(
+                TAG,
+                "Rapido stale/repeated click suppressed: " +
+                    "popupSession=$livePopupSession attempt=$attemptNumber"
             )
-
-            resetProcessing()
             return
         }
 
@@ -8156,6 +8159,10 @@ private val processingTimeoutRunnable = Runnable {
         // ═══ STEP 4 - Verify: order popup gone in 200ms = ACCEPTED. Cooldown: 200ms max between attempts ═══
         serviceScope.launch(Dispatchers.IO) {
             delay(40L) // RAPIDO_SPEED_V3
+            if (!rapidoVerifiedClickGuard.isCurrent(livePopupSession)) {
+                Log.i(TAG, "Old Rapido popup verification ended: newer offer active")
+                return@launch
+            }
             val currentRoot = getRapidoOrderRootNode(orderRoot)
                         val postAcceptConfirmed = isRapidoPostAcceptScreen(currentRoot)
 val isOrderStillVisible =
@@ -8201,6 +8208,7 @@ val isOrderStillVisible =
                         orderRoot = currentRoot,
                         attemptNumber = attemptNumber + 1,
                         historyRecordId = pinnedRecordId,
+                        verifiedPopupSession = livePopupSession,
                         acceptedHistoryReason =
                             acceptedHistoryReason
                     )
