@@ -135,7 +135,35 @@ class RideHistoryRepository(
                         }
                 } else null
 
-            val existing = byBookingId ?: byFingerprint ?: nearbyPartialPriority
+            // RAPIDO_FINAL_HISTORY_NEAR_DUP_V1
+            // Ignore/reject can be finalized before Rapido's next accessibility
+            // snapshot. One-rupee fare drift must not create a second card.
+            // Never merge Accepted records or distinct booking IDs.
+            val nearbyFinalized = if (
+                candidate.platform == Platform.RAPIDO &&
+                candidate.bookingId.isNullOrBlank() && validDrop && exactDrop.length >= 12
+            ) {
+                dao.getRecentPlatformHistory(Platform.RAPIDO.name, now - 3_000L)
+                    .firstOrNull { previous ->
+                        previous.bookingId.isBlank() &&
+                            previous.status in setOf(
+                                OrderStatus.IGNORED.name, OrderStatus.REJECTED.name
+                            ) &&
+                            (now - previous.detectedAt) in 0L..3_000L &&
+                            previous.dropAddress.trim().lowercase(Locale.ROOT) == exactDrop &&
+                            previous.dropDistanceKm > 0f &&
+                            (candidate.dropDistKm ?: 0f) > 0f &&
+                            kotlin.math.abs(previous.dropDistanceKm - (candidate.dropDistKm ?: 0f)) <= 0.11f &&
+                            previous.pickupDistanceKm > 0f &&
+                            (candidate.pickupDistKm ?: 0f) > 0f &&
+                            kotlin.math.abs(previous.pickupDistanceKm - (candidate.pickupDistKm ?: 0f)) <= 0.16f &&
+                            previous.fare > 0f &&
+                            (candidate.fare ?: 0f) > 0f &&
+                            kotlin.math.abs(previous.fare - (candidate.fare ?: 0f)) <= 1.01f
+                    }
+            } else null
+
+            val existing = byBookingId ?: nearbyFinalized ?: byFingerprint ?: nearbyPartialPriority
 
             if (existing != null) {
                 // HISTORY_DEDUP_FINAL_V2
@@ -193,8 +221,11 @@ class RideHistoryRepository(
                 val samePartialPriority =
                     nearbyPartialPriority != null && nearbyPartialPriority.id == existing.id &&
                         (now - existing.detectedAt) in 0L..5_000L
+                val sameUnmatchedSnapshot =
+                    nearbyFinalized != null && nearbyFinalized.id == existing.id &&
+                        (now - existing.detectedAt) in 0L..3_000L
 
-                if (isRecent && (sameBookingId || sameRecentFingerprint || samePartialPriority)) {
+                if (isRecent && (sameBookingId || sameRecentFingerprint || samePartialPriority || sameUnmatchedSnapshot)) {
                     // Preserve the completed status and strong data; fill
                     // missing fields if a later event recovers them.
                     val incomingFare = candidate.fare ?: 0f

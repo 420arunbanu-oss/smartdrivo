@@ -85,6 +85,29 @@ class RideHistoryDuplicateRegressionTest {
         assertEquals(1, history.getAllHistoryDirect().size)
     }
 
+    @Test fun rejectedOrIgnoredSmallFareDriftSameDropHasOneRow() = runBlocking {
+        val address = "Milan Function Hall - Limra Mission School, Shah Gunj, Hyderabad"
+        val one = order(128f, address).copy(
+            baseFare = 109f, tipAmount = 19f,
+            pickupDistKm = 0.9f, dropDistKm = 3.7f
+        )
+        val first = history.onOrderDetected(one)
+        history.onOrderDecision(
+            first.id, OrderStatus.IGNORED, "CRITERIA_NOT_MET", "No enabled filter matched"
+        )
+        val two = order(129f, address).copy(
+            baseFare = 75f, tipAmount = 54f,
+            pickupDistKm = 0.9f, dropDistKm = 3.7f
+        )
+        val again = history.onOrderDetected(two)
+        assertEquals(first.id, again.id)
+        assertEquals(1, history.getAllHistoryDirect().size)
+        // Keep original strong fare/base/tip instead of mixing multiple snapshots.
+        assertEquals(128f, again.fare, 0.01f)
+        assertEquals(109f, again.baseFare, 0.01f)
+        assertEquals(19f, again.tipAmount, 0.01f)
+    }
+
     @Test fun newDifferentDropIsNeverCollapsed() = runBlocking {
         accept(order(70f, "Kachiguda"))
         history.onOrderDetected(order(70f, "Charminar"))

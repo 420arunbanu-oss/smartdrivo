@@ -248,6 +248,15 @@ object RapidoAdapter {
         if (clean.length < 2) return true
         val lower = clean.lowercase()
 
+        // RAPIDO_ADDRESS_UI_LABELS_V1
+        // Switch/status labels must never become destination addresses.
+        if (lower in setOf(
+                "off", "on", "enabled", "disabled", "true", "false",
+                "auto priority", "priority", "loading", "retry", "cancelled",
+                "active", "inactive", "switch off", "switch on"
+            )
+        ) return true
+
         // Never treat Rapido UI counters as pickup/drop addresses.
         if (
             lower.matches(Regex("""^\d+\s+(?:orders?|rides?|requests?)$""")) ||
@@ -904,18 +913,57 @@ object RapidoAdapter {
             }
         }
 
+        // RAPIDO_KM_LABEL_PRIORITY_V1
+        // Some accessibility hierarchies repeat the same 0.9 km text in
+        // nested parent/child nodes. Keep one copy of consecutive identical
+        // text/number pairs so pickup 0.9 km is not read as Trip 0.9 km.
+        // No second tree scan; only the already-captured in-memory text list.
+        val orderedKm = mutableListOf<Pair<Int, Float>>()
+        for (match in kmMatches) {
+            val last = orderedKm.lastOrNull()
+            val repeatedSameNodeText = last != null &&
+                match.first - last.first in 0..2 &&
+                kotlin.math.abs(match.second - last.second) < 0.001f &&
+                texts[match.first].trim().equals(
+                    texts[last.first].trim(), ignoreCase = true
+                )
+            if (!repeatedSameNodeText) orderedKm.add(match)
+        }
+
         // Explicit drop/trip distance detection from labels or text
         var explicitDropKm: Float? = null
-        for (line in texts) {
-            val sanitized = line.replace(Regex("""[0-9]+(?:\.[0-9]+)?\s*(?:km/h|kmph|km\s*/\s*h|km/hr)\b""", RegexOption.IGNORE_CASE), " ")
-            val dropMatch = Regex("""(?:(?:drop|trip|distance|destination)[^\n0-9]*([0-9]+(?:\.[0-9]+)?)\s*km)|(?:([0-9]+(?:\.[0-9]+)?)\s*km[^\n]*(?:drop|trip|distance|destination))""", RegexOption.IGNORE_CASE).find(sanitized)
-            if (dropMatch != null) {
-                val valStr = dropMatch.groupValues[1].ifEmpty { dropMatch.groupValues[2] }
-                val parsed = valStr.toFloatOrNull()
-                if (parsed != null && parsed > 0f) {
-                    explicitDropKm = parsed
-                    break
-                }
+        var explicitPickupKm: Float? = null
+        val tripLabeled = Regex(
+            """(?i)\b(?:trip|drop(?:\s+distance)?|destination\s+distance)\s*[:\-]?\s*([0-9]+(?:\.[0-9]+)?)\s*km\b"""
+        )
+        val tripReverse = Regex(
+            """(?i)\b([0-9]+(?:\.[0-9]+)?)\s*km\s*(?:trip|drop|destination)\b"""
+        )
+        val pickupLabeled = Regex(
+            """(?i)\b(?:pickup|pick\s*up|distance\s+to\s+pickup)\s*[:\-]?\s*([0-9]+(?:\.[0-9]+)?)\s*km\b"""
+        )
+        val standaloneTrip = Regex("""(?i)^(?:trip|drop(?: distance)?|destination distance)\s*:?$""")
+        val standalonePickup = Regex("""(?i)^(?:pickup|pick up|distance to pickup)\s*:?$""")
+        for (i in texts.indices) {
+            val line = texts[i].trim()
+            val stripped = line.replace(
+                Regex("""[0-9]+(?:\.[0-9]+)?\s*(?:km/h|kmph|km\s*/\s*h|km/hr)\b""", RegexOption.IGNORE_CASE),
+                " "
+            )
+            if (explicitDropKm == null) {
+                val found = tripLabeled.find(stripped)?.groupValues?.getOrNull(1)
+                    ?: tripReverse.find(stripped)?.groupValues?.getOrNull(1)
+                    ?: if (standaloneTrip.matches(line))
+                        texts.getOrNull(i + 1)?.let { KM_REGEX.find(it)?.groupValues?.getOrNull(1) }
+                    else null
+                explicitDropKm = found?.toFloatOrNull()?.takeIf { it > 0f }
+            }
+            if (explicitPickupKm == null) {
+                val found = pickupLabeled.find(stripped)?.groupValues?.getOrNull(1)
+                    ?: if (standalonePickup.matches(line))
+                        texts.getOrNull(i + 1)?.let { KM_REGEX.find(it)?.groupValues?.getOrNull(1) }
+                    else null
+                explicitPickupKm = found?.toFloatOrNull()?.takeIf { it > 0f }
             }
         }
 
@@ -926,15 +974,18 @@ object RapidoAdapter {
 
         if (explicitDropKm != null) {
             dropKm = explicitDropKm
-            pickupKm = if (hasNearby) null else kmMatches.map { it.second }.firstOrNull { it != explicitDropKm }
+            pickupKm = if (hasNearby) null else explicitPickupKm
+                ?: orderedKm.map { it.second }.firstOrNull { it != explicitDropKm }
         } else if (hasNearby) {
-            // Pickup is explicitly "Nearby", so pickup distance is NOT a numeric value
+            // Pickup is explicitly "Nearby", so pickup distance is NOT a numeric value.
             pickupKm = null
-            // Any km match on screen belongs to drop/trip distance
-            dropKm = kmMatches.firstOrNull()?.second
+            dropKm = orderedKm.firstOrNull()?.second
         } else {
-            pickupKm = kmMatches.getOrNull(0)?.second
-            dropKm = kmMatches.getOrNull(1)?.second
+            pickupKm = explicitPickupKm ?: orderedKm.getOrNull(0)?.second
+            dropKm = if (explicitPickupKm != null) {
+                orderedKm.firstOrNull { it.second != explicitPickupKm }?.second
+                    ?: orderedKm.getOrNull(1)?.second
+            } else orderedKm.getOrNull(1)?.second
         }
 
         if (dropKm == null) {
@@ -995,8 +1046,8 @@ object RapidoAdapter {
         }
 
         // Step 3b: Proximity to km markers
-        val firstKmIdx = kmMatches.getOrNull(0)?.first
-        val secondKmIdx = kmMatches.getOrNull(1)?.first
+        val firstKmIdx = orderedKm.getOrNull(0)?.first
+        val secondKmIdx = orderedKm.getOrNull(1)?.first
 
         if (!skipPickupAddress && pickupAddress == null && firstKmIdx != null && !hasNearby) {
             val endSearch = secondKmIdx ?: texts.size

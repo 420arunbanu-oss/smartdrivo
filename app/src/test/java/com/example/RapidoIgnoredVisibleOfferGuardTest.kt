@@ -48,7 +48,20 @@ class RapidoIgnoredVisibleOfferGuardTest {
         guard.rememberIgnored(offer())
         assertFalse(guard.isDuplicateIgnored(offer(address = "Dabirpura, Hyderabad")))
         guard.rememberIgnored(offer())
-        assertFalse(guard.isDuplicateIgnored(offer(fare = 100f)))
+        assertFalse(guard.isDuplicateIgnored(offer(fare = 105f)))
+    }
+
+    @Test fun sameLivePopupSmallFareDriftDoesNotCreateExtraIgnoredRow() {
+        val guard = RapidoIgnoredVisibleOfferGuard()
+        val address = "Milan Function Hall - Limra Mission School, Shah Gunj, Hyderabad"
+        val first = offer(fare = 128f, pickup = 0.9f, drop = 3.7f, address = address)
+            .copy(baseFare = 109f, tipAmount = 19f)
+        val changed = offer(fare = 129f, pickup = 0.9f, drop = 3.7f, address = address)
+            .copy(baseFare = 75f, tipAmount = 54f)
+        guard.rememberIgnored(first)
+        assertTrue(guard.isDuplicateIgnored(changed))
+        guard.clear()
+        assertFalse(guard.isDuplicateIgnored(changed))
     }
 
     @Test fun differentBookingIdsMustRemainSeparate() {
