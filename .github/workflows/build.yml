@@ -41,6 +41,9 @@ jobs:
           test -n "$RELEASE_KEYSTORE_BASE64"
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/my-upload-key.jks"
 
+      - name: Run Debug Regression Tests
+        run: ./gradlew :app:testDebugUnitTest --no-configuration-cache
+
       - name: Build Signed Release APK
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks

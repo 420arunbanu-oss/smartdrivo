@@ -713,40 +713,19 @@ private val processingTimeoutRunnable = Runnable {
     // A verified NEW Rapido popup should not be blocked by the
     // previous order's generic 3-second click-in-progress lock.
     // Anti-spam limits are still retained.
-    @Synchronized
-    private fun canExecuteVerifiedRapidoClick(): Boolean {
-        if (!preferencesManager.isAutoAcceptEnabled) {
-            return false
-        }
+    // Verified Rapido offer clicks have their own sequential five-attempt guard.
+    // Other platform/generic safety and cooldown remain unchanged.
+    private val rapidoVerifiedClickGuard =
+        com.example.engine.RapidoVerifiedClickGuard()
 
-        val now = System.currentTimeMillis()
-
-        if (now < clickBlockedUntilTimestamp) {
-            return false
-        }
-
-        recentClickTimestamps.removeAll {
-            now - it > 2_000L
-        }
-
-        if (recentClickTimestamps.size >= 3) {
-            clickBlockedUntilTimestamp =
-                now + 5_000L
-
-            recentClickTimestamps.clear()
-
-            Log.w(
-                TAG,
-                "Rapido verified click blocked by anti-spam safety limit"
-            )
-
-            return false
-        }
-
-        // Do not use isClickInProgress here.
-        // activeRapidoPopupOrderId protects the SAME popup.
-        return true
-    }
+    private fun canExecuteVerifiedRapidoClick(
+        orderId: String,
+        attemptNumber: Int
+    ): Boolean = rapidoVerifiedClickGuard.tryAllow(
+        orderId = orderId,
+        attemptNumber = attemptNumber,
+        autoAcceptEnabled = preferencesManager.isAutoAcceptEnabled
+    )
     @Synchronized
     private fun notifyClickInitiated() {
         val now = System.currentTimeMillis()
@@ -1445,7 +1424,8 @@ private val processingTimeoutRunnable = Runnable {
         val hasPriority: Boolean,
         val acceptNode: AccessibilityNodeInfo?,
         val dropAddress: String?,
-        val visitedNodes: Int
+        val visitedNodes: Int,
+        val textSnapshot: List<String> = emptyList()
     )
 
     private fun scanRapidoAutoPrioritySinglePass(
@@ -1700,7 +1680,9 @@ private val processingTimeoutRunnable = Runnable {
             dropAddress =
                 dropAddress,
             visitedNodes =
-                visited
+                visited,
+            textSnapshot =
+                if (hasPriority) pieces.toList() else emptyList()
         )
     }
 
@@ -1888,7 +1870,11 @@ private val processingTimeoutRunnable = Runnable {
                                 ?: sourceScan.dropAddress,
                         visitedNodes =
                             sourceScan.visitedNodes +
-                                topScan.visitedNodes
+                                topScan.visitedNodes,
+                        textSnapshot =
+                            if (topScan.textSnapshot.isNotEmpty())
+                                topScan.textSnapshot
+                            else sourceScan.textSnapshot
                     )
             }
         }
@@ -1997,7 +1983,9 @@ private val processingTimeoutRunnable = Runnable {
                 startedNs =
                     clickStartedNs,
                 preClickDropAddress =
-                    preClickDropAddress
+                    preClickDropAddress,
+                preClickTextSnapshot =
+                    finalScan.textSnapshot
             )
         }
 
@@ -2008,7 +1996,8 @@ private val processingTimeoutRunnable = Runnable {
     private suspend fun finalizeRapidoAutoPriorityAfterClick(
         clickRoot: AccessibilityNodeInfo,
         startedNs: Long,
-        preClickDropAddress: String?
+        preClickDropAddress: String?,
+        preClickTextSnapshot: List<String>
     ) {
         val baseCandidate =
             try {
@@ -2046,22 +2035,52 @@ private val processingTimeoutRunnable = Runnable {
                         System.currentTimeMillis()
                 )
 
+        // Recover fare and trip details from single-pass text AFTER the click.
+        // Does not delay the first tap or apply ride filters to Auto Priority.
+        val recoveredOrder =
+            if ((baseCandidate.fare ?: 0f) <= 0f ||
+                baseCandidate.dropDistKm == null
+            ) {
+                try {
+                    RapidoAdapter.extractOrderDataFromTexts(
+                        texts = preClickTextSnapshot,
+                        skipPickupAddress = true
+                    )
+                } catch (_: Exception) {
+                    null
+                }
+            } else null
+
+        val enrichedCandidate = baseCandidate.copy(
+            fare = baseCandidate.fare?.takeIf { it > 0f }
+                ?: recoveredOrder?.totalFare?.takeIf { it > 0f },
+            baseFare = baseCandidate.baseFare?.takeIf { it > 0f }
+                ?: recoveredOrder?.baseFare?.takeIf { it > 0f },
+            tipAmount = baseCandidate.tipAmount ?: recoveredOrder?.tipAmount,
+            pickupDistKm = baseCandidate.pickupDistKm ?: recoveredOrder?.pickupKm,
+            dropDistKm = baseCandidate.dropDistKm ?: recoveredOrder?.dropKm,
+            bookingId = baseCandidate.bookingId ?: recoveredOrder?.bookingId,
+            dropAddress = baseCandidate.dropAddress?.takeIf {
+                it.isNotBlank() && it != "Address unavailable"
+            } ?: recoveredOrder?.dropAddress
+        )
+
         // RAPIDO_AUTO_PRIORITY_DROP_AFTER_CLICK_V1
         // Accept has ALREADY been sent before this code runs.
         // Recover only destination data for History + overlay.
         val candidate =
             if (
-                baseCandidate.dropAddress
+                enrichedCandidate.dropAddress
                     .isNullOrBlank() ||
-                baseCandidate.dropAddress.equals(
+                enrichedCandidate.dropAddress.equals(
                     "Address unavailable",
                     ignoreCase = true
                 ) ||
-                baseCandidate.dropAddress.equals(
+                enrichedCandidate.dropAddress.equals(
                     "Detected Drop Location",
                     ignoreCase = true
                 ) ||
-                baseCandidate.dropAddress.equals(
+                enrichedCandidate.dropAddress.equals(
                     "Drop Location",
                     ignoreCase = true
                 )
@@ -2091,21 +2110,30 @@ private val processingTimeoutRunnable = Runnable {
                         "AUTO PRIORITY drop recovered from pre-click snapshot/fallback: $recoveredDrop"
                     )
 
-                    baseCandidate.copy(
+                    enrichedCandidate.copy(
                         dropAddress =
                             recoveredDrop,
                         dropArea =
                             recoveredDrop
                     )
                 } else {
-                    baseCandidate
+                    enrichedCandidate
                 }
             } else {
-                baseCandidate
+                enrichedCandidate
             }
 
-        val recordId = onOrderDetectedFast(candidate)
-        onOrderActionAttemptFast(recordId)
+        // Never persist blank ₹0 / Nearby Auto Priority Accepted History.
+        // Click already sent; verification still runs even if data is missing.
+        val recordId = if (
+            com.example.engine.AutoPriorityHistoryGate.hasUsableHistory(candidate)
+        ) {
+            onOrderDetectedFast(candidate)
+        } else {
+            Log.w(TAG, "AUTO PRIORITY: incomplete fare/drop; blank History row skipped")
+            null
+        }
+        if (recordId != null) onOrderActionAttemptFast(recordId)
 
         var attempts = 1
 
@@ -2125,8 +2153,9 @@ private val processingTimeoutRunnable = Runnable {
                     lower.contains("accepted by another")
 
             if (missed) {
+                recordId?.let { validId ->
                 onOrderActionCompletedFast(
-                    recordId = recordId,
+                    recordId = validId,
                     candidate = candidate,
                     status = OrderStatus.MISSED,
                     reasonCode = "AUTO_PRIORITY_MISSED",
@@ -2138,6 +2167,7 @@ private val processingTimeoutRunnable = Runnable {
                     clickMethod = "Auto Priority Instant Fast Path",
                     errorMsg = "Order ended before acceptance confirmation"
                 )
+                }
                 rapidoAutoPriorityFastBusy = false
                 return
             }
@@ -2163,10 +2193,11 @@ private val processingTimeoutRunnable = Runnable {
                         )
                 )
 
-                showAcceptedOrderOverlay(candidate)
+                if (recordId != null) showAcceptedOrderOverlay(candidate)
 
+                recordId?.let { validId ->
                 onOrderActionCompletedFast(
-                    recordId = recordId,
+                    recordId = validId,
                     candidate = candidate,
                     status = OrderStatus.ACCEPTED,
                     reasonCode = "AUTO_PRIORITY_INSTANT",
@@ -2177,6 +2208,7 @@ private val processingTimeoutRunnable = Runnable {
                     buttonDetails = "Strict Auto Priority Accept",
                     clickMethod = "Auto Priority Instant Fast Path"
                 )
+                }
 
                 rapidoAutoPriorityFastBusy = false
                 return
@@ -2192,8 +2224,9 @@ private val processingTimeoutRunnable = Runnable {
             attempts++
         }
 
+        recordId?.let { validId ->
         onOrderActionCompletedFast(
-            recordId = recordId,
+            recordId = validId,
             candidate = candidate,
             status = OrderStatus.FAILED,
             reasonCode = "AUTO_PRIORITY_VERIFY_TIMEOUT",
@@ -2205,6 +2238,7 @@ private val processingTimeoutRunnable = Runnable {
             clickMethod = "Auto Priority Instant Fast Path",
             errorMsg = "Verification timed out"
         )
+        }
 
         rapidoAutoPriorityFastBusy = false
     }
@@ -7757,9 +7791,9 @@ private val processingTimeoutRunnable = Runnable {
             val acceptedHistoryReason =
                 if (
                     decision is DecisionResult.Accept &&
-                    decision.reason.contains(
-                        "Go-To",
-                        ignoreCase = true
+                    (
+                        decision.reason.contains("Go-To", ignoreCase = true) ||
+                            decision.reason.startsWith("Mode: Order Filter Unlimited")
                     )
                 ) {
                     decision.reason
@@ -7848,7 +7882,7 @@ private val processingTimeoutRunnable = Runnable {
         val now = System.currentTimeMillis()
         lastRapidoAttemptTime = now
 
-        if (!canExecuteVerifiedRapidoClick()) {
+        if (!canExecuteVerifiedRapidoClick(pinnedRecordId, attemptNumber)) {
             Log.w(TAG, "Rapido auto-accept paused by anti-spam safety limit")
 
             val recordId = pinnedRecordId
@@ -8071,8 +8105,8 @@ private val processingTimeoutRunnable = Runnable {
                 "Clickable: ${acceptNode.isClickable}"
         )
 
-        notifyClickInitiated()
-
+        // Verified popup and per-order guard already authorized this click.
+        // Do not start a global 3-second lock for Rapido retries.
         var clicked = false
         // Primary: performAction(ACTION_CLICK) directly on accept node
         if (acceptNode.isClickable) {
@@ -8097,7 +8131,7 @@ private val processingTimeoutRunnable = Runnable {
                 val cx = bounds.centerX().toFloat()
                 val cy = bounds.centerY().toFloat()
                 Log.i(TAG, "👆 [Rapido] Click performed: Gesture tap strictly at Accept button center ($cx, $cy), screenBounds=$bounds")
-                simulateTapGesture(cx, cy, isInternalFallback = true)
+                simulateTapGesture(cx, cy, isInternalFallback = true, verifiedRapidoFallback = true)
             } else {
                 Log.w(TAG, "❌ [Rapido] Accept button bounds invalid ($bounds) - doing nothing, no random click")
                 val recordId = pinnedRecordId
@@ -8289,19 +8323,24 @@ val isOrderStillVisible =
         x: Float,
         y: Float,
         isInternalFallback: Boolean = false,
+        verifiedRapidoFallback: Boolean = false,
         onComplete: ((Boolean) -> Unit)? = null
     ) {
         val now = System.currentTimeMillis()
 
-        // Fix 4: Check if waiting after rate limit penalty (5-second cooldown)
-        if (now < clickBlockedUntilTimestamp) {
+        // Strict Rapido Accept button fallback was verified and limited by offer ID.
+        // Generic gestures still obey their full global cooldown.
+        if (!verifiedRapidoFallback && now < clickBlockedUntilTimestamp) {
             val waitRemaining = clickBlockedUntilTimestamp - now
             Log.w(TAG, "🚫 [Fix 4] simulateTapGesture blocked: rate limit 5s cooldown active (remaining: ${waitRemaining}ms)")
             onComplete?.invoke(false)
             return
         }
 
-        if (!isInternalFallback) {
+        if (verifiedRapidoFallback) {
+            // Only call this for the verified Accept node's exact center.
+            // Per-offer guard limits retries; no generic penalty here.
+        } else if (!isInternalFallback) {
             // Check Fix 3 & Fix 4
             if (!canExecuteClick()) {
                 Log.w(TAG, "🚫 simulateTapGesture skipped at ($x, $y) due to cooldown or rate limit")
@@ -9576,13 +9615,33 @@ val isOrderStillVisible =
                 )
             }
         }
+        val tertiaryMatched =
+            settings.isTertiaryBothFilterEnabled &&
+                fare > 0f &&
+                candidate.pickupDistKm != null &&
+                candidate.dropDistKm != null &&
+                (settings.tertiaryBothMinFare <= 0f ||
+                    fare >= settings.tertiaryBothMinFare) &&
+                (settings.tertiaryBothMaxPickupDistanceKm <= 0f ||
+                    pickup <= settings.tertiaryBothMaxPickupDistanceKm) &&
+                (settings.tertiaryBothMaxDropDistanceKm <= 0f ||
+                    trip <= settings.tertiaryBothMaxDropDistanceKm)
+
+        if (!homeMatched && !secondaryMatched && tertiaryMatched) {
+            return "Mode: Filter 3" +
+                "\nFare ₹${fare.toInt()} >= ₹${settings.tertiaryBothMinFare.toInt()}" +
+                " | Pickup ${km(pickup)} <= ${km(settings.tertiaryBothMaxPickupDistanceKm)}" +
+                " | Trip ${km(trip)} <= ${km(settings.tertiaryBothMaxDropDistanceKm)}"
+        }
         // HISTORY_REAL_MATCHED_UNLIMITED_V1
         // Only claim a specific unlimited rule when the prior home/secondary
         // paths do NOT qualify. This prevents impossible "2.7 <= 1.7" text.
         val matchedUnlimitedIndex = settings.extraFareRules.indexOfFirst { rule ->
             rule.matches(candidate.fare, candidate.pickupDistKm, candidate.dropDistKm)
         }
-        if (!homeMatched && !secondaryMatched && matchedUnlimitedIndex >= 0) {
+        if (!homeMatched && !secondaryMatched && !tertiaryMatched &&
+            matchedUnlimitedIndex >= 0
+        ) {
             val matchedRule = settings.extraFareRules[matchedUnlimitedIndex]
             return "Mode: Order Filter Unlimited - Filter ${matchedUnlimitedIndex + 1}" +
                 "\nFare ₹${fare.toInt()} >= ₹${matchedRule.minimum.toInt()}" +
