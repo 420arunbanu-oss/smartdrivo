@@ -2,7 +2,7 @@ name: Build SmartDrivo APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, smartdrivo-device-lock-free-20261011-112401 ]
   workflow_dispatch:
 
 jobs:
