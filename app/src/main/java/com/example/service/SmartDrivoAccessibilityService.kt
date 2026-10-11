@@ -806,6 +806,7 @@ private val processingTimeoutRunnable = Runnable {
         val secondaryBothMaxPickupKm: Float = 3.0f,
         val secondaryBothMaxDropKm: Float = 7.5f,
 
+        val extraFareRules: List<com.example.model.UnlimitedFilterRule> = emptyList(),
         val tertiaryBothEnabled: Boolean = false,
         val tertiaryBothMinFare: Float = 50f,
         val tertiaryBothMaxPickupKm: Float = 3.0f,
@@ -953,6 +954,9 @@ private val processingTimeoutRunnable = Runnable {
             maxPickupKm = maxPickupKm,
             maxDropKm = maxDropKm,
             filterMode = normalizedFilterMode,
+            extraFareRules = com.example.model.UnlimitedFilterRule.decodeCached(
+                sp.getString("setting_unlimited_fare_rules_json", null)
+            ),
 
             primaryFilterEnabled =
                 primaryFilterEnabled,
@@ -1217,6 +1221,10 @@ private val processingTimeoutRunnable = Runnable {
             }
         }
 
+        val unlimitedMatched = direct.extraFareRules.any {
+            it.matches(fare, pickup, drop)
+        }
+
         val primaryMatched =
             direct.primaryFilterEnabled &&
                 failureReasons.isEmpty()
@@ -1232,7 +1240,8 @@ private val processingTimeoutRunnable = Runnable {
         if (
             primaryMatched ||
             secondaryMatched ||
-            tertiaryMatched
+            tertiaryMatched ||
+            unlimitedMatched
         ) {
             val matched =
                 mutableListOf<String>()
@@ -1247,6 +1256,9 @@ private val processingTimeoutRunnable = Runnable {
 
             if (tertiaryMatched) {
                 matched += "Filter 3"
+            }
+            if (unlimitedMatched) {
+                matched += "Filter Unlimited"
             }
 
             return DirectFilterResult(
@@ -7539,33 +7551,41 @@ private val processingTimeoutRunnable = Runnable {
             resetProcessing()
             return
         }
-        // RAPIDO_PLUS_AMOUNT_FILTER_V1
-        // Green +\u20B9 amount filter: only +amount + pickup + trip matter.
-        // Base fare, addresses and every other saved filter are bypassed ONLY when this matches.
-        if (settings.isPlusAmountFilterEnabled && candidate.platform == Platform.RAPIDO) {
-            val plusAmount = candidate.tipAmount ?: 0f
+        // RAPIDO_PLUS_AMOUNT_UNLIMITED_V1
+        // Match original +Amount OR any enabled additional +Amount row.
+        // Every selected row requires +Amount AND pickup AND drop.
+        // Existing verified Accept-button execution remains unchanged.
+        if (candidate.platform == Platform.RAPIDO && autoAcceptEnabled) {
+            val plusAmount = candidate.tipAmount
             val plusPickup = candidate.pickupDistKm
             val plusDrop = candidate.dropDistKm
-
-            val plusMatched =
-                plusAmount > 0f &&
+            val legacyPlusMatch =
+                settings.isPlusAmountFilterEnabled &&
+                    plusAmount != null && plusAmount > 0f &&
                     plusAmount >= settings.plusAmountMin &&
                     plusPickup != null && plusPickup > 0f &&
                     plusPickup <= settings.plusAmountMaxPickupDistanceKm &&
                     plusDrop != null && plusDrop > 0f &&
                     plusDrop <= settings.plusAmountMaxDropDistanceKm
 
-            if (plusMatched) {
-                val plusReason = buildString {
-                    append("Mode: + Amount Filter")
-                    append("\n+\u20B9${plusAmount.toInt()} >= +\u20B9${settings.plusAmountMin.toInt()}")
-                    append(" | Pickup ${String.format(Locale.ENGLISH, "%.1f", plusPickup)} km <= ${String.format(Locale.ENGLISH, "%.1f", settings.plusAmountMaxPickupDistanceKm)} km")
-                    append(" | Trip ${String.format(Locale.ENGLISH, "%.1f", plusDrop)} km <= ${String.format(Locale.ENGLISH, "%.1f", settings.plusAmountMaxDropDistanceKm)} km")
-                    append("\nBase fare + addresses + other filters bypassed")
+            val additionalRule = if (legacyPlusMatch) null else
+                settings.extraPlusAmountRules.firstOrNull {
+                    it.matches(plusAmount, plusPickup, plusDrop)
                 }
 
-                Log.i(TAG, "RAPIDO + AMOUNT FILTER MATCHED: +\u20B9$plusAmount pickup=$plusPickup trip=$plusDrop")
-
+            if (legacyPlusMatch || additionalRule != null) {
+                val selectedMinimum = additionalRule?.minimum ?: settings.plusAmountMin
+                val selectedPickup = additionalRule?.maxPickupKm ?: settings.plusAmountMaxPickupDistanceKm
+                val selectedDrop = additionalRule?.maxDropKm ?: settings.plusAmountMaxDropDistanceKm
+                val label = if (additionalRule != null) "+Amount Unlimited" else "+ Amount Filter"
+                val plusReason = buildString {
+                    append("Mode: $label")
+                    append("\n+₹${plusAmount?.toInt()} >= +₹${selectedMinimum.toInt()}")
+                    append(" | Pickup ${String.format(Locale.ENGLISH, "%.1f", plusPickup)} km <= ${String.format(Locale.ENGLISH, "%.1f", selectedPickup)} km")
+                    append(" | Trip ${String.format(Locale.ENGLISH, "%.1f", plusDrop)} km <= ${String.format(Locale.ENGLISH, "%.1f", selectedDrop)} km")
+                    append("\nOther regular fare filters bypassed")
+                }
+                Log.i(TAG, "RAPIDO + AMOUNT MATCHED: $label amount=$plusAmount pickup=$plusPickup drop=$plusDrop")
                 executeRapidoAutoAccept(
                     candidate = candidate,
                     orderRoot = root,

@@ -84,6 +84,10 @@ data class AppSettings(
     val plusAmountMaxPickupDistanceKm: Float = 3.0f,
     val plusAmountMaxDropDistanceKm: Float = 7.5f,
 
+    // Unlimited compact filter rows (legacy Filter 2 / 3 and +Amount stay intact).
+    val extraFareRules: List<UnlimitedFilterRule> = emptyList(),
+    val extraPlusAmountRules: List<UnlimitedFilterRule> = emptyList(),
+
     // Platforms enabled
     val rapidoEnabled: Boolean = true,
     val uberEnabled: Boolean = true,

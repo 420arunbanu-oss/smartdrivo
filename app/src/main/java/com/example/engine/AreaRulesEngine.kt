@@ -318,10 +318,16 @@ object AreaRulesEngine {
                         drop <= settings.tertiaryBothMaxDropDistanceKm
                 )
 
+        // Unlimited rows are OR with Filter 1/2/3; each row needs all 3 values.
+        val unlimitedMatched = settings.extraFareRules.any {
+            it.matches(fare, pickup, drop)
+        }
+
         if (
             homeMatched ||
             secondaryMatched ||
-            tertiaryMatched
+            tertiaryMatched ||
+            unlimitedMatched
         ) {
             val matched =
                 mutableListOf<String>()
@@ -337,6 +343,9 @@ object AreaRulesEngine {
 
             if (tertiaryMatched) {
                 matched += "Filter 3"
+            }
+            if (unlimitedMatched) {
+                matched += "Filter Unlimited"
             }
 
             return DecisionResult.Accept(

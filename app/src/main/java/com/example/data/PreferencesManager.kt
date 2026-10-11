@@ -904,6 +904,9 @@ class PreferencesManager(private val context: Context) {
             putFloat(KEY_PLUS_AMOUNT_MAX_PICKUP, settings.plusAmountMaxPickupDistanceKm)
             putFloat(KEY_PLUS_AMOUNT_MAX_DROP, settings.plusAmountMaxDropDistanceKm)
 
+            putString("setting_unlimited_fare_rules_json", com.example.model.UnlimitedFilterRule.encode(settings.extraFareRules))
+            putString("setting_unlimited_plus_rules_json", com.example.model.UnlimitedFilterRule.encode(settings.extraPlusAmountRules))
+
             putBoolean(KEY_RAPIDO_ENABLED, settings.rapidoEnabled)
             putBoolean(KEY_UBER_ENABLED, settings.uberEnabled)
             putBoolean(KEY_OLA_ENABLED, settings.olaEnabled)
@@ -958,7 +961,80 @@ class PreferencesManager(private val context: Context) {
         return fresh
     }
 
+    // ORDER_FILTER_UNLIMITED_MIGRATION_V2
+    // This retains all saved Filter 2/3/+Amount values, including OFF rows,
+    // and disables their old hidden runtime toggles after a successful commit.
+    private fun migrateLegacyFilterCardsToUnlimitedV2() {
+        val migratedKey = "setting_unlimited_parent_v2_migrated"
+        if (prefs.getBoolean(migratedKey, false)) return
+
+        val fareKey = "setting_unlimited_fare_rules_json"
+        val plusKey = "setting_unlimited_plus_rules_json"
+        val fareRules = com.example.model.UnlimitedFilterRule
+            .decode(prefs.getString(fareKey, null)).toMutableList()
+        val plusRules = com.example.model.UnlimitedFilterRule
+            .decode(prefs.getString(plusKey, null)).toMutableList()
+
+        fun safeMinimum(value: Float): Float =
+            if (value.isFinite() && value > 0f) value else 0.01f
+
+        fun safeMaximum(value: Float): Float =
+            if (value.isFinite() && value > 0f) value else 999999f
+
+        fun addPreset(
+            list: MutableList<com.example.model.UnlimitedFilterRule>,
+            id: String,
+            enabled: Boolean,
+            minimum: Float,
+            pickup: Float,
+            drop: Float
+        ) {
+            if (list.none { it.id == id }) {
+                list.add(
+                    com.example.model.UnlimitedFilterRule(
+                        id = id,
+                        enabled = enabled,
+                        minimum = safeMinimum(minimum),
+                        maxPickupKm = safeMaximum(pickup),
+                        maxDropKm = safeMaximum(drop)
+                    )
+                )
+            }
+        }
+
+        addPreset(
+            fareRules, "legacy-filter-2-v2",
+            prefs.getBoolean(KEY_SECONDARY_BOTH_ENABLED, false),
+            getSafeFloat(KEY_SECONDARY_BOTH_MIN_FARE, 50f),
+            getSafeFloat(KEY_SECONDARY_BOTH_MAX_PICKUP, 3f),
+            getSafeFloat(KEY_SECONDARY_BOTH_MAX_DROP, 7.5f)
+        )
+        addPreset(
+            fareRules, "legacy-filter-3-v2",
+            prefs.getBoolean(KEY_TERTIARY_BOTH_ENABLED, false),
+            getSafeFloat(KEY_TERTIARY_BOTH_MIN_FARE, 50f),
+            getSafeFloat(KEY_TERTIARY_BOTH_MAX_PICKUP, 3f),
+            getSafeFloat(KEY_TERTIARY_BOTH_MAX_DROP, 7.5f)
+        )
+        addPreset(
+            plusRules, "legacy-plus-amount-v2",
+            prefs.getBoolean(KEY_PLUS_AMOUNT_ENABLED, false),
+            getSafeFloat(KEY_PLUS_AMOUNT_MIN, 10f),
+            getSafeFloat(KEY_PLUS_AMOUNT_MAX_PICKUP, 3f),
+            getSafeFloat(KEY_PLUS_AMOUNT_MAX_DROP, 7.5f)
+        )
+
+        prefs.edit()
+            .putString(fareKey, com.example.model.UnlimitedFilterRule.encode(fareRules))
+            .putString(plusKey, com.example.model.UnlimitedFilterRule.encode(plusRules))
+            .putBoolean(KEY_SECONDARY_BOTH_ENABLED, false)
+            .putBoolean(KEY_TERTIARY_BOTH_ENABLED, false)
+            .putBoolean(KEY_PLUS_AMOUNT_ENABLED, false)
+            .putBoolean(migratedKey, true)
+            .commit()
+    }
     private fun loadAppSettingsRaw(): AppSettings {
+        migrateLegacyFilterCardsToUnlimitedV2()
         val maxPickup = getSafeFloat(KEY_MAX_PICKUP_DIST, 3.0f)
         val maxDrop = getSafeFloat(KEY_MAX_DROP_DIST, getSafeFloat(KEY_MAX_DROP_KM, 7.5f))
         val minFare = getSafeFloat(KEY_MIN_FARE, 50f)
@@ -1031,6 +1107,9 @@ class PreferencesManager(private val context: Context) {
             plusAmountMin = getSafeFloat(KEY_PLUS_AMOUNT_MIN, 10f),
             plusAmountMaxPickupDistanceKm = getSafeFloat(KEY_PLUS_AMOUNT_MAX_PICKUP, 3.0f),
             plusAmountMaxDropDistanceKm = getSafeFloat(KEY_PLUS_AMOUNT_MAX_DROP, 7.5f),
+
+            extraFareRules = com.example.model.UnlimitedFilterRule.decode(prefs.getString("setting_unlimited_fare_rules_json", null)),
+            extraPlusAmountRules = com.example.model.UnlimitedFilterRule.decode(prefs.getString("setting_unlimited_plus_rules_json", null)),
 
             rapidoEnabled = prefs.getBoolean(KEY_RAPIDO_ENABLED, true),
             uberEnabled = prefs.getBoolean(KEY_UBER_ENABLED, true),
