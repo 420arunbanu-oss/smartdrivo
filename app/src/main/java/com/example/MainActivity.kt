@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
@@ -78,6 +79,10 @@ import com.example.ui.screens.PlanSelectionScreen
 import com.example.ui.screens.ProfileScreen
 import com.example.ui.screens.ProfileSetupScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.SecurityLockScreen
+import com.example.ui.screens.UpdateRequiredScreen
+import com.example.ui.screens.TamperLockScreen
+import com.example.ui.screens.MembershipLockedOverlay
 import com.example.ui.screens.SplashScreen
 import com.example.ui.screens.WelcomeScreen
 import com.example.ui.theme.BlueContainer
@@ -110,6 +115,9 @@ object Routes {
     const val COMMUNITY = "community"
     const val ADMIN_PANEL = "admin_panel"
     const val FINISH_SETUP = "finish_setup"
+    const val SECURITY_LOCK = "security_lock"
+    const val UPDATE_REQUIRED = "update_required"
+    const val TAMPER_LOCK = "tamper_lock"
 }
 
 private data class NavItemData(
@@ -183,6 +191,15 @@ class MainActivity : ComponentActivity() {
 
     private fun checkAndApplyAutoAcceptOnResume() {
         try {
+            if (
+                ::preferencesManager.isInitialized &&
+                !preferencesManager.apkSignatureValid.value
+            ) {
+                preferencesManager.isPendingAutoAcceptActivation = false
+                preferencesManager.setAutoAcceptActive(false)
+                return
+            }
+
             if (::preferencesManager.isInitialized && preferencesManager.isPendingAutoAcceptActivation) {
                 val hasAccessibility = PermissionHelper.isAccessibilityPermissionGranted(applicationContext)
                 val hasOverlay = PermissionHelper.isOverlayPermissionGranted(applicationContext)
@@ -228,11 +245,114 @@ fun SmartDrivoApp(
 
     val paymentSubmissions by
         prefs.paymentSubmissions.collectAsState()
+
+    // OFFLINE_GRACE_LOCK_V1
+    val lastSecurityVerificationAt by
+        prefs.lastSecurityVerificationAt.collectAsState()
+
+    // LOGIN_SESSION_LOCK_V1
+    val loginSessionInvalidated by
+        prefs.loginSessionInvalidated.collectAsState()
+
+    val loginSessionReason by
+        prefs.loginSessionReason.collectAsState()
+
+    // MINIMUM_VERSION_LOCK_V1
+    val forceUpdateEnabled by
+        prefs.forceUpdateEnabled.collectAsState()
+
+    val minimumAppVersionCode by
+        prefs.minimumAppVersionCode.collectAsState()
+
+    val minimumAppVersionName by
+        prefs.minimumAppVersionName.collectAsState()
+
+    val forceUpdateUrl by
+        prefs.forceUpdateUrl.collectAsState()
+
+    // APK_SIGNATURE_TAMPER_LOCK_V1
+    val apkSignatureValid by
+        prefs.apkSignatureValid.collectAsState()
+
     val isUserAdmin = userProfile.isAdmin
     val firebaseUser = PhoneAuthManager.getAuthInstance()?.currentUser
     val isLoggedIn = prefs.isLoggedIn && (firebaseUser != null || userProfile.email.isNotBlank() || userProfile.phone.isNotBlank())
     val isProfileComplete = userProfile.phone.isNotBlank() && userProfile.city.isNotBlank() && userProfile.state.isNotBlank()
-    val isMembershipActive = (isUserAdmin || userProfile.isPlanValid) && userProfile.isActive
+
+    // OFFLINE_GRACE_LOCK_V1
+    val securityVerificationUid =
+        firebaseUser?.uid
+            ?.takeIf { it.isNotBlank() }
+            ?: userProfile.uid
+
+    var offlineGraceClock by
+        remember {
+            mutableStateOf(
+                System.currentTimeMillis()
+            )
+        }
+
+    val hasOfflineGraceLease =
+        lastSecurityVerificationAt > 0L
+
+    val isOfflineVerificationExpired =
+        !isUserAdmin &&
+            isLoggedIn &&
+            securityVerificationUid.isNotBlank() &&
+            hasOfflineGraceLease &&
+            !prefs.isOfflineGraceValid(
+                securityVerificationUid,
+                offlineGraceClock
+            )
+
+    // BLOCKED_USER_DEVICE_BLACKLIST_V1
+    val isSecurityBlocked =
+        !isUserAdmin &&
+            (
+                userProfile.isBlocked ||
+                    !userProfile.isActive ||
+                    isOfflineVerificationExpired ||
+                    loginSessionInvalidated
+            )
+    val isMembershipActive =
+        (isUserAdmin || userProfile.isPlanValid) &&
+            userProfile.isActive &&
+            !isSecurityBlocked
+
+    // MINIMUM_VERSION_LOCK_V1
+    // This is a RAM-only comparison against values already received through
+    // the existing global settings listener. No network call occurs here.
+    val isForceUpdateRequired =
+        !isUserAdmin &&
+            forceUpdateEnabled &&
+            minimumAppVersionCode > 0 &&
+            BuildConfig.VERSION_CODE <
+                minimumAppVersionCode
+
+    // OFFLINE_GRACE_LOCK_V1
+    // Existing signed-in installs receive one migration grace window.
+    // The clock refreshes locally only for UI expiry; no network call occurs.
+    LaunchedEffect(
+        isLoggedIn,
+        securityVerificationUid,
+        isUserAdmin
+    ) {
+        if (
+            isLoggedIn &&
+            !isUserAdmin &&
+            securityVerificationUid.isNotBlank()
+        ) {
+            prefs.seedOfflineGraceForExistingUserIfNeeded(
+                securityVerificationUid
+            )
+
+            while (true) {
+                delay(30_000L)
+                offlineGraceClock =
+                    System.currentTimeMillis()
+            }
+        }
+    }
 
     // Verify profile with Firestore for existing users on startup
     LaunchedEffect(isLoggedIn) {
@@ -258,7 +378,17 @@ fun SmartDrivoApp(
                             planExpireMillis = fsProfile.planExpireMillis,
                             isApproved = fsProfile.isApproved,
                             isAdmin = fsProfile.isAdmin,
-                            isActive = fsProfile.isActive
+                            isActive = fsProfile.isActive,
+                            isBlocked = fsProfile.isBlocked,
+                            blockReason = fsProfile.blockReason,
+                            isDeviceBlacklisted =
+                                fsProfile.isDeviceBlacklisted,
+                            deviceBlacklistReason =
+                                fsProfile.deviceBlacklistReason,
+                            boundInstallId = fsProfile.boundInstallId,
+                            boundDeviceName = fsProfile.boundDeviceName,
+                            isDeviceAuthorized = fsProfile.isDeviceAuthorized,
+                            deviceChangeRequested = fsProfile.deviceChangeRequested
                         )
                         prefs.saveUserProfile(updated)
                         // DEVICE_SYNC_STARTUP_V2
@@ -285,12 +415,28 @@ fun SmartDrivoApp(
         val admin = userProfile.isAdmin
         val hasAllPermissions = checkAllPermissionsGranted()
 
-        if (!loggedIn) {
+        if (!prefs.apkSignatureValid.value) {
+            Routes.TAMPER_LOCK
+        } else if (!loggedIn) {
             Routes.WELCOME
+        } else if (
+            isSecurityBlocked
+        ) {
+            Routes.SECURITY_LOCK
+        } else if (
+            !admin &&
+            prefs.forceUpdateEnabled.value &&
+            prefs.minimumAppVersionCode.value > 0 &&
+            BuildConfig.VERSION_CODE <
+                prefs.minimumAppVersionCode.value
+        ) {
+            Routes.UPDATE_REQUIRED
         } else if (!admin && (userProfile.phone.isBlank() || userProfile.city.isBlank() || userProfile.state.isBlank())) {
             Routes.PROFILE_SETUP
         } else if (!admin && !userProfile.isPlanValid) {
-            Routes.PLAN_SELECTION
+            // MEMBERSHIP_LOCKED_PREVIEW_V1
+            // Let the user enter SmartDrivo, but keep ride features locked.
+            Routes.HOME
         } else if (!hasAllPermissions) {
             Routes.FINISH_SETUP
         } else {
@@ -318,7 +464,13 @@ fun SmartDrivoApp(
     val mainRoutes = remember {
         setOf(Routes.HOME, Routes.SETTINGS, Routes.AREA_MANAGER, Routes.ORDER_HISTORY, Routes.PROFILE)
     }
-    val showBottomBar = currentRoute in mainRoutes && isLoggedIn && (isUserAdmin || (isProfileComplete && isMembershipActive))
+    val showBottomBar =
+        currentRoute in mainRoutes &&
+            isLoggedIn &&
+            !isSecurityBlocked &&
+            apkSignatureValid &&
+            !isForceUpdateRequired &&
+            (isUserAdmin || isProfileComplete)
 
     val isDarkNavyScreen = currentRoute == Routes.WELCOME
 
@@ -335,6 +487,36 @@ fun SmartDrivoApp(
             Routes.PAYMENT_HISTORY,
             Routes.COMMUNITY
         )
+    }
+
+    // MEMBERSHIP_LOCKED_PREVIEW_V1
+    // Membership lock must never leave the assistant running in background.
+    LaunchedEffect(isMembershipActive, isUserAdmin) {
+        if (!isUserAdmin && !isMembershipActive) {
+            prefs.setAutoAcceptActive(false)
+        }
+    }
+
+    // MINIMUM_VERSION_LOCK_V1
+    // Force-update lock disables the assistant once when the cached policy
+    // becomes restrictive. It is not checked from the live ride parser.
+    LaunchedEffect(
+        isForceUpdateRequired
+    ) {
+        if (isForceUpdateRequired) {
+            prefs.setAutoAcceptActive(false)
+        }
+    }
+
+    // APK_SIGNATURE_TAMPER_LOCK_V1
+    // Local certificate result is already in RAM. No network/package scan is
+    // performed in the live order parser.
+    LaunchedEffect(
+        apkSignatureValid
+    ) {
+        if (!apkSignatureValid) {
+            prefs.setAutoAcceptActive(false)
+        }
     }
 
     // FREE_TRIAL_EXPIRY_V3
@@ -383,8 +565,9 @@ fun SmartDrivoApp(
                         ?.route
 
                 if (routeNow !in paymentRoutes) {
+                    // Trial expired: stay inside SmartDrivo in locked preview mode.
                     navController.navigate(
-                        Routes.PLAN_SELECTION
+                        Routes.HOME
                     ) {
                         popUpTo(0) {
                             inclusive = true
@@ -397,18 +580,52 @@ fun SmartDrivoApp(
         }
     }
     // Gate Check Enforcer:
-    // Step 1: Authentication -> WelcomeScreen
-    // Step 2: Profile Setup (mobile, city, state) -> ProfileSetupScreen
-    // Step 3: Active membership/payment -> PlanSelectionScreen
-    // Only after all 3 steps -> HomeScreen (full app access)
-    LaunchedEffect(currentRoute, isLoggedIn, isProfileComplete, isMembershipActive) {
+    // APK signature + authentication + security + minimum-version + profile
+    // remain mandatory. Membership uses the separate locked preview.
+    LaunchedEffect(
+        currentRoute,
+        apkSignatureValid,
+        isLoggedIn,
+        isSecurityBlocked,
+        isForceUpdateRequired,
+        isProfileComplete
+    ) {
         if (currentRoute == null) return@LaunchedEffect
 
-        if (!isLoggedIn) {
+        if (!apkSignatureValid) {
+            if (currentRoute != Routes.TAMPER_LOCK) {
+                navController.navigate(Routes.TAMPER_LOCK) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        } else if (currentRoute == Routes.TAMPER_LOCK) {
+            navController.navigate(
+                if (isLoggedIn) Routes.HOME
+                else Routes.WELCOME
+            ) {
+                popUpTo(0) { inclusive = true }
+            }
+        } else if (!isLoggedIn) {
             if (currentRoute !in authRoutes) {
                 navController.navigate(Routes.WELCOME) {
                     popUpTo(0) { inclusive = true }
                 }
+            }
+        } else if (isSecurityBlocked) {
+            if (currentRoute != Routes.SECURITY_LOCK) {
+                navController.navigate(Routes.SECURITY_LOCK) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        } else if (isForceUpdateRequired) {
+            if (currentRoute != Routes.UPDATE_REQUIRED) {
+                navController.navigate(Routes.UPDATE_REQUIRED) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        } else if (currentRoute == Routes.UPDATE_REQUIRED) {
+            navController.navigate(Routes.HOME) {
+                popUpTo(0) { inclusive = true }
             }
         } else if (!isProfileComplete && !isUserAdmin) {
             if (currentRoute !in profileRoutes) {
@@ -416,10 +633,17 @@ fun SmartDrivoApp(
                     popUpTo(0) { inclusive = true }
                 }
             }
-        } else if (!isMembershipActive) {
-            if (currentRoute !in paymentRoutes) {
-                navController.navigate(Routes.PLAN_SELECTION) {
-                    popUpTo(0) { inclusive = true }
+        } else if (
+            currentRoute ==
+                Routes.SECURITY_LOCK
+        ) {
+            // OFFLINE_GRACE_LOCK_V1
+            // Reconnect + successful verification unlocks automatically.
+            navController.navigate(
+                Routes.HOME
+            ) {
+                popUpTo(0) {
+                    inclusive = true
                 }
             }
         }
@@ -440,11 +664,28 @@ fun SmartDrivoApp(
                     ) {
                         bottomNavItems.forEach { item ->
                             val isSelected = currentRoute == item.route || (item.route == Routes.HOME && currentRoute == Routes.WELCOME)
+
+                            // MEMBERSHIP_BOTTOM_LOCK_ICONS_V1
+                            // In inactive membership preview, Home / Filters / Areas /
+                            // History stay visible but show a lock icon. More stays open.
+                            val isMembershipLockedItem =
+                                !isUserAdmin &&
+                                    !isMembershipActive &&
+                                    item.route != Routes.PROFILE
+
                             NavigationBarItem(
                                 icon = {
                                     Icon(
-                                        imageVector = item.icon,
-                                        contentDescription = item.label,
+                                        imageVector =
+                                            if (isMembershipLockedItem)
+                                                Icons.Default.Lock
+                                            else
+                                                item.icon,
+                                        contentDescription =
+                                            if (isMembershipLockedItem)
+                                                "${item.label} locked"
+                                            else
+                                                item.label,
                                         modifier = Modifier.size(24.dp)
                                     )
                                 },
@@ -503,8 +744,22 @@ fun SmartDrivoApp(
                     val admin = userProfile.isAdmin
                     val hasAllPermissions = checkAllPermissionsGranted()
                     prefs.hasOpenedBefore = true
-                    if (!loggedIn) {
+                    if (!apkSignatureValid) {
+                        navController.navigate(Routes.TAMPER_LOCK) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
+                    } else if (!loggedIn) {
                         navController.navigate(Routes.WELCOME) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
+                    } else if (
+                        isSecurityBlocked
+                    ) {
+                        navController.navigate(Routes.SECURITY_LOCK) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
+                    } else if (isForceUpdateRequired) {
+                        navController.navigate(Routes.UPDATE_REQUIRED) {
                             popUpTo(Routes.SPLASH) { inclusive = true }
                         }
                     } else if (!admin && (userProfile.phone.isBlank() || userProfile.city.isBlank() || userProfile.state.isBlank())) {
@@ -512,7 +767,7 @@ fun SmartDrivoApp(
                             popUpTo(Routes.SPLASH) { inclusive = true }
                         }
                     } else if (!admin && !userProfile.isPlanValid) {
-                        navController.navigate(Routes.PLAN_SELECTION) {
+                        navController.navigate(Routes.HOME) {
                             popUpTo(Routes.SPLASH) { inclusive = true }
                         }
                     } else if (!hasAllPermissions) {
@@ -537,6 +792,69 @@ fun SmartDrivoApp(
             }
         }
 
+        // APK_SIGNATURE_TAMPER_LOCK_V1
+        composable(Routes.TAMPER_LOCK) {
+            TamperLockScreen(
+                officialDownloadUrl =
+                    forceUpdateUrl.ifBlank {
+                        "https://t.me/smartdrivo"
+                    }
+            )
+        }
+
+        // DEVICE_LOCK_V1
+        composable(Routes.SECURITY_LOCK) {
+            SecurityLockScreen(
+                profile = userProfile,
+                offlineVerificationExpired =
+                    isOfflineVerificationExpired,
+                sessionInvalidated =
+                    loginSessionInvalidated,
+                sessionReason =
+                    loginSessionReason,
+                onLogout = {
+                    repository.stopOwnMembershipSync()
+                    PhoneAuthManager.getAuthInstance()?.signOut()
+                    prefs.clearLoginSessionState()
+                    prefs.isLoggedIn = false
+                    prefs.setAutoAcceptActive(false)
+                    navController.navigate(Routes.WELCOME) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // MINIMUM_VERSION_LOCK_V1
+        composable(Routes.UPDATE_REQUIRED) {
+            UpdateRequiredScreen(
+                currentVersionName =
+                    BuildConfig.VERSION_NAME,
+                minimumVersionName =
+                    minimumAppVersionName,
+                updateUrl =
+                    forceUpdateUrl,
+                onLogout = {
+                    repository.stopOwnMembershipSync()
+                    PhoneAuthManager
+                        .getAuthInstance()
+                        ?.signOut()
+
+                    prefs.clearLoginSessionState()
+                    prefs.isLoggedIn = false
+                    prefs.setAutoAcceptActive(false)
+
+                    navController.navigate(
+                        Routes.WELCOME
+                    ) {
+                        popUpTo(0) {
+                            inclusive = true
+                        }
+                    }
+                }
+            )
+        }
+
         // 3. Welcome Screen (Merged Auth + Features list + Membership plans)
         composable(Routes.WELCOME) {
             WelcomeScreen(
@@ -549,7 +867,7 @@ fun SmartDrivoApp(
                             popUpTo(Routes.WELCOME) { inclusive = true }
                         }
                     } else if (!isMembershipActive) {
-                        navController.navigate(Routes.PLAN_SELECTION) {
+                        navController.navigate(Routes.HOME) {
                             popUpTo(Routes.WELCOME) { inclusive = true }
                         }
                     } else {
@@ -619,7 +937,17 @@ fun SmartDrivoApp(
                                 planExpireMillis = firestoreProfile.planExpireMillis,
                                 isApproved = firestoreProfile.isApproved,
                                 isAdmin = firestoreProfile.isAdmin,
-                                isActive = firestoreProfile.isActive
+                                isActive = firestoreProfile.isActive,
+                                isBlocked = firestoreProfile.isBlocked,
+                                blockReason = firestoreProfile.blockReason,
+                                isDeviceBlacklisted =
+                                    firestoreProfile.isDeviceBlacklisted,
+                                deviceBlacklistReason =
+                                    firestoreProfile.deviceBlacklistReason,
+                                boundInstallId = firestoreProfile.boundInstallId,
+                                boundDeviceName = firestoreProfile.boundDeviceName,
+                                isDeviceAuthorized = firestoreProfile.isDeviceAuthorized,
+                                deviceChangeRequested = firestoreProfile.deviceChangeRequested
                             )
                         } else {
                             val updatedEmail = if (phoneOrEmail.contains("@")) phoneOrEmail else userProfile.email
@@ -636,7 +964,18 @@ fun SmartDrivoApp(
 
                         // If empty → go to ProfileSetupScreen. If filled → continue to next gate check
                         val isProfileEmpty = merged.phone.isBlank() || merged.city.isBlank() || merged.state.isBlank()
-                        if (isProfileEmpty && !merged.isAdmin) {
+                        val securityBlocked =
+                            !merged.isAdmin &&
+                                (
+                                    merged.isBlocked ||
+                                        !merged.isActive
+                                )
+
+                        if (securityBlocked) {
+                            navController.navigate(Routes.SECURITY_LOCK) {
+                                popUpTo(Routes.WELCOME) { inclusive = true }
+                            }
+                        } else if (isProfileEmpty && !merged.isAdmin) {
                             navController.navigate(Routes.PROFILE_SETUP) {
                                 popUpTo(Routes.WELCOME) { inclusive = true }
                             }
@@ -649,7 +988,9 @@ fun SmartDrivoApp(
                                     popUpTo(Routes.WELCOME) { inclusive = true }
                                 }
                             } else {
-                                navController.navigate(Routes.PLAN_SELECTION) {
+                                // Login succeeds even without membership.
+                                // The Home screen opens in locked preview mode.
+                                navController.navigate(Routes.HOME) {
                                     popUpTo(Routes.WELCOME) { inclusive = true }
                                 }
                             }
@@ -733,7 +1074,7 @@ fun SmartDrivoApp(
                             popUpTo(Routes.PROFILE_SETUP) { inclusive = true }
                         }
                     } else {
-                        navController.navigate(Routes.PLAN_SELECTION) {
+                        navController.navigate(Routes.HOME) {
                             popUpTo(Routes.PROFILE_SETUP) { inclusive = true }
                         }
                     }
@@ -758,21 +1099,13 @@ fun SmartDrivoApp(
                     navController.navigate(Routes.PAYMENT)
                 },
 
-                onBack =
-                    if (
-                        userProfile.isAdmin ||
-                        userProfile.isPlanValid
-                    ) {
-                        {
-                            if (!navController.popBackStack()) {
-                                navController.navigate(Routes.PROFILE) {
-                                    launchSingleTop = true
-                                }
-                            }
+                onBack = {
+                    if (!navController.popBackStack()) {
+                        navController.navigate(Routes.HOME) {
+                            launchSingleTop = true
                         }
-                    } else {
-                        null
                     }
+                }
             )
         }
 
@@ -963,41 +1296,81 @@ fun SmartDrivoApp(
 
         // 12. Main Home Dashboard
         composable(Routes.HOME) {
-            HomeScreen(
-                prefs = prefs,
-                repository = repository,
-                onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
-                onNavigateToHistory = { navController.navigate(Routes.ORDER_HISTORY) },
-                onNavigateToProfile = { navController.navigate(Routes.PROFILE) },
-                onNavigateToAreaManager = { navController.navigate(Routes.AREA_MANAGER) },
-                onNavigateToCommunity = { navController.navigate(Routes.COMMUNITY) }
-            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                HomeScreen(
+                    prefs = prefs,
+                    repository = repository,
+                    onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+                    onNavigateToHistory = { navController.navigate(Routes.ORDER_HISTORY) },
+                    onNavigateToProfile = { navController.navigate(Routes.PROFILE) },
+                    onNavigateToAreaManager = { navController.navigate(Routes.AREA_MANAGER) },
+                    onNavigateToCommunity = { navController.navigate(Routes.COMMUNITY) }
+                )
+
+                if (!isUserAdmin && !isMembershipActive) {
+                    MembershipLockedOverlay(
+                        onViewPlans = {
+                            navController.navigate(Routes.PLAN_SELECTION)
+                        }
+                    )
+                }
+            }
         }
 
         // 13. Area Rules Manager Screen
         composable(Routes.AREA_MANAGER) {
-            AreaManagerScreen(
-                prefs = prefs,
-                repository = repository,
-                onBack = { navController.popBackStack() }
-            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                AreaManagerScreen(
+                    prefs = prefs,
+                    repository = repository,
+                    onBack = { navController.popBackStack() }
+                )
+
+                if (!isUserAdmin && !isMembershipActive) {
+                    MembershipLockedOverlay(
+                        onViewPlans = {
+                            navController.navigate(Routes.PLAN_SELECTION)
+                        }
+                    )
+                }
+            }
         }
 
         // 14. Order History Screen
         composable(Routes.ORDER_HISTORY) {
-            OrderHistoryScreen(
-                prefs = prefs,
-                onBack = { navController.popBackStack() }
-            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                OrderHistoryScreen(
+                    prefs = prefs,
+                    onBack = { navController.popBackStack() }
+                )
+
+                if (!isUserAdmin && !isMembershipActive) {
+                    MembershipLockedOverlay(
+                        onViewPlans = {
+                            navController.navigate(Routes.PLAN_SELECTION)
+                        }
+                    )
+                }
+            }
         }
 
         // 15. Settings Screen
         composable(Routes.SETTINGS) {
-            SettingsScreen(
-                prefs = prefs,
-                onNavigateToAdminWeb = { navController.navigate(Routes.ADMIN_PANEL) },
-                onBack = { navController.popBackStack() }
-            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                SettingsScreen(
+                    prefs = prefs,
+                    onNavigateToAdminWeb = { navController.navigate(Routes.ADMIN_PANEL) },
+                    onBack = { navController.popBackStack() }
+                )
+
+                if (!isUserAdmin && !isMembershipActive) {
+                    MembershipLockedOverlay(
+                        onViewPlans = {
+                            navController.navigate(Routes.PLAN_SELECTION)
+                        }
+                    )
+                }
+            }
         }
 
         // 16. More Screen
@@ -1010,8 +1383,11 @@ fun SmartDrivoApp(
                 onNavigateToCommunity = { navController.navigate(Routes.COMMUNITY) },
                 onNavigateToAdminPanel = { navController.navigate(Routes.ADMIN_PANEL) },
                 onLogout = {
+                    repository.stopOwnMembershipSync()
                     PhoneAuthManager.signOut()
+                    prefs.clearLoginSessionState()
                     prefs.isLoggedIn = false
+                    prefs.setAutoAcceptActive(false)
                     prefs.saveUserProfile(userProfile.copy(name = "", email = "", phone = ""))
                     navController.navigate(Routes.WELCOME) {
                         popUpTo(Routes.HOME) { inclusive = true }

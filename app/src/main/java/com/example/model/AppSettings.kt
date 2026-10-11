@@ -60,6 +60,10 @@ data class AppSettings(
     val isAutoRejectBadFaresEnabled: Boolean = false,
     val isFastestModeEnabled: Boolean = false,
 
+    // ORDER_FILTER_1_TOGGLE_V1
+    // Primary Order Filter 1. Default ON preserves existing behavior.
+    val isPrimaryFilterEnabled: Boolean = true,
+
     // Separate BOTH filter from Smart Filter screen.
     // Completely independent from Home page Fare/Distance/Both.
     val isSecondaryBothFilterEnabled: Boolean = false,

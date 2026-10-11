@@ -224,10 +224,10 @@ object AreaRulesEngine {
                 }km"
             )
         }
-        // Normal Home filter + independent Filter 2 filter.
+        // Normal Home filter + independent Filter 2 + Filter 3.
         //
-        // Home MATCH OR Filter 2 MATCH = ACCEPT.
-        // Both FAIL = No condition matched.
+        // Home MATCH OR Filter 2 MATCH OR Filter 3 MATCH = ACCEPT.
+        // All active choices FAIL = No condition matched.
         //
         // No-Go / Go-To / Fastest rules above keep their existing priority.
 
@@ -274,8 +274,10 @@ object AreaRulesEngine {
                     true
             }
 
+        // ORDER_FILTER_1_RUNTIME_V1
         val homeMatched =
-            homeFareMatches &&
+            settings.isPrimaryFilterEnabled &&
+                homeFareMatches &&
                 homeDistanceMatches
 
         val secondaryMatched =
@@ -290,40 +292,89 @@ object AreaRulesEngine {
                 ) &&
                 (
                     settings.secondaryBothMaxPickupDistanceKm <= 0f ||
-                        pickup <=
-                            settings.secondaryBothMaxPickupDistanceKm
+                        pickup <= settings.secondaryBothMaxPickupDistanceKm
                 ) &&
                 (
                     settings.secondaryBothMaxDropDistanceKm <= 0f ||
-                        drop <=
-                            settings.secondaryBothMaxDropDistanceKm
+                        drop <= settings.secondaryBothMaxDropDistanceKm
                 )
 
-        if (homeMatched || secondaryMatched) {
+        val tertiaryMatched =
+            settings.isTertiaryBothFilterEnabled &&
+                fare != null &&
+                fare > 0f &&
+                pickup != null &&
+                drop != null &&
+                (
+                    settings.tertiaryBothMinFare <= 0f ||
+                        fare >= settings.tertiaryBothMinFare
+                ) &&
+                (
+                    settings.tertiaryBothMaxPickupDistanceKm <= 0f ||
+                        pickup <= settings.tertiaryBothMaxPickupDistanceKm
+                ) &&
+                (
+                    settings.tertiaryBothMaxDropDistanceKm <= 0f ||
+                        drop <= settings.tertiaryBothMaxDropDistanceKm
+                )
+
+        if (
+            homeMatched ||
+            secondaryMatched ||
+            tertiaryMatched
+        ) {
+            val matched =
+                mutableListOf<String>()
+
+            if (homeMatched) {
+                matched +=
+                    "Order Filter 1"
+            }
+
+            if (secondaryMatched) {
+                matched += "Filter 2"
+            }
+
+            if (tertiaryMatched) {
+                matched += "Filter 3"
+            }
+
             return DecisionResult.Accept(
-                when {
-                    homeMatched && secondaryMatched ->
-                        "Filter 1 ${settings.filterMode.displayName} + Filter 2 matched"
-
-                    secondaryMatched ->
-                        "Filter 2 matched"
-
-                    else ->
-                        "Home ${settings.filterMode.displayName} filter matched"
-                }
+                matched.joinToString(" + ") +
+                    " matched"
             )
         }
 
         return DecisionResult.Reject(
-            "No condition matched  |  Home ${settings.filterMode.displayName} failed" +
-                if (settings.isSecondaryBothFilterEnabled) {
-                    "  |  Filter 2 failed"
-                } else {
-                    "  |  Filter 2 OFF"
-                }
+            buildString {
+                append("No condition matched")
+
+                append(
+                    if (settings.isPrimaryFilterEnabled) {
+                        "  |  Order Filter 1 failed"
+                    } else {
+                        "  |  Order Filter 1 OFF"
+                    }
+                )
+
+                append(
+                    if (settings.isSecondaryBothFilterEnabled) {
+                        "  |  Filter 2 failed"
+                    } else {
+                        "  |  Filter 2 OFF"
+                    }
+                )
+
+                append(
+                    if (settings.isTertiaryBothFilterEnabled) {
+                        "  |  Filter 3 failed"
+                    } else {
+                        "  |  Filter 3 OFF"
+                    }
+                )
+            }
         )
     }
-
     @JvmName("evaluateRideWithStrings")
     fun evaluateRide(
         candidate: RideCandidate,

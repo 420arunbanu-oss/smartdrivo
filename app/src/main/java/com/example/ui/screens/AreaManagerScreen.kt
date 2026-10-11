@@ -509,163 +509,465 @@ private fun CompactAreaGroupCard(
     onToggle: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val isGoTo = group.type == AreaType.GO_TO
-    val accent = if (isGoTo) GoToGreen else NoGoRed
-    val bg = if (isGoTo) GoToGreenBg else NoGoRedBg
-    val border = if (isGoTo) GoToGreenBorder else NoGoRedBorder
+    // AREA_CARD_SYSTEM_V3
+    // OFF = white.
+    // ON = Go-To blue / No-Go red.
+
+    val isGoTo =
+        group.type == AreaType.GO_TO
+
+    val accent =
+        if (isGoTo) {
+            GoToGreen
+        } else {
+            NoGoRed
+        }
+
+    val activeBackground =
+        if (isGoTo) {
+            GoToGreenBg
+        } else {
+            NoGoRedBg
+        }
+
+    val cardBackground =
+        if (group.isEnabled) {
+            activeBackground
+        } else {
+            Color.White
+        }
+
+    val cardBorder =
+        if (group.isEnabled) {
+            accent
+        } else {
+            Color(0xFFE2E8F0)
+        }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, border),
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth()
+        colors =
+            CardDefaults.cardColors(
+                containerColor =
+                    cardBackground
+            ),
+        border =
+            BorderStroke(
+                1.dp,
+                cardBorder
+            ),
+        shape =
+            RoundedCornerShape(14.dp),
+        modifier =
+            Modifier.fillMaxWidth()
     ) {
+
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+            modifier =
+                Modifier.padding(11.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(9.dp)
         ) {
+
+            // Header
             Row(
-                verticalAlignment = Alignment.CenterVertically
+                modifier =
+                    Modifier.fillMaxWidth(),
+                horizontalArrangement =
+                    Arrangement.SpaceBetween,
+                verticalAlignment =
+                    Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .background(bg, RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center
+
+                Column(
+                    modifier =
+                        Modifier.weight(1f)
                 ) {
-                    Icon(
-                        if (isGoTo) Icons.Default.Place else Icons.Default.Block,
-                        contentDescription = null,
-                        tint = accent,
-                        modifier = Modifier.size(19.dp)
+
+                    Box(
+                        modifier =
+                            Modifier
+                                .background(
+                                    Color.White.copy(
+                                        alpha = 0.78f
+                                    ),
+                                    RoundedCornerShape(
+                                        9.dp
+                                    )
+                                )
+                                .padding(
+                                    horizontal = 9.dp,
+                                    vertical = 5.dp
+                                )
+                    ) {
+
+                        Text(
+                            text =
+                                if (isGoTo) {
+                                    "GO TO"
+                                } else {
+                                    "NO GO"
+                                },
+                            fontSize = 10.sp,
+                            fontWeight =
+                                FontWeight.Bold,
+                            color = accent
+                        )
+                    }
+
+                    Spacer(
+                        Modifier.height(7.dp)
+                    )
+
+                    Text(
+                        text = group.name,
+                        fontWeight =
+                            FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color =
+                            Color(0xFF0F172A),
+                        maxLines = 1,
+                        overflow =
+                            TextOverflow.Ellipsis
+                    )
+
+                    Text(
+                        text =
+                            if (isGoTo) {
+                                "${group.keywords.size} destination areas"
+                            } else {
+                                "${group.keywords.size} blocked areas"
+                            },
+                        fontSize = 11.sp,
+                        color =
+                            Color(0xFF64748B)
                     )
                 }
 
-                Spacer(Modifier.width(8.dp))
+                Row(
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
 
-                Column(Modifier.weight(1f)) {
                     Text(
-                        group.name,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Text(
-                            "${group.keywords.size} areas",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-
-                        Text(
-                            "\u2022",
-                            fontSize = 11.sp,
-                            color = Color(0xFF94A3B8)
-                        )
-
-                        Surface(
-                            color = if (group.isEnabled) {
-                                accent.copy(alpha = 0.12f)
+                        text =
+                            if (group.isEnabled) {
+                                "ON"
                             } else {
-                                Color(0xFFF1F5F9)
+                                "OFF"
                             },
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                text = if (group.isEnabled) "ACTIVE" else "OFF",
-                                modifier = Modifier.padding(
-                                    horizontal = 6.dp,
-                                    vertical = 2.dp
-                                ),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (group.isEnabled) {
-                                    accent
-                                } else {
-                                    Color(0xFF64748B)
-                                }
+                        fontSize = 11.sp,
+                        fontWeight =
+                            FontWeight.Bold,
+                        color =
+                            if (group.isEnabled) {
+                                accent
+                            } else {
+                                Color(0xFF64748B)
+                            }
+                    )
+
+                    Spacer(
+                        Modifier.width(7.dp)
+                    )
+
+                    Switch(
+                        checked =
+                            group.isEnabled,
+                        onCheckedChange = {
+                            onToggle()
+                        },
+                        colors =
+                            SwitchDefaults.colors(
+                                checkedTrackColor =
+                                    accent,
+                                checkedThumbColor =
+                                    Color.White,
+                                uncheckedTrackColor =
+                                    Color(0xFFBDBDBD),
+                                uncheckedThumbColor =
+                                    Color.White
                             )
+                    )
+                }
+            }
+
+            // Area preview
+            if (group.keywords.isNotEmpty()) {
+
+                Surface(
+                    color =
+                        Color.White.copy(
+                            alpha =
+                                if (group.isEnabled) {
+                                    0.65f
+                                } else {
+                                    1f
+                                }
+                        ),
+                    shape =
+                        RoundedCornerShape(10.dp),
+                    border =
+                        if (group.isEnabled) {
+                            null
+                        } else {
+                            BorderStroke(
+                                1.dp,
+                                Color(0xFFE2E8F0)
+                            )
+                        },
+                    modifier =
+                        Modifier.fillMaxWidth()
+                ) {
+
+                    Text(
+                        text =
+                            group.keywords
+                                .take(6)
+                                .joinToString(
+                                    "   \u2022   "
+                                ),
+                        modifier =
+                            Modifier.padding(
+                                horizontal = 9.dp,
+                                vertical = 7.dp
+                            ),
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        color =
+                            Color(0xFF475569),
+                        maxLines = 2,
+                        overflow =
+                            TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // Go-To rules / No-Go rule
+            if (isGoTo) {
+
+                val goToMinFare =
+                    if (group.maxFare > 0f) {
+                        group.maxFare
+                    } else {
+                        group.minFare
+                    }
+
+                Text(
+                    text =
+                        "Fare + Pickup + Drop area rules",
+                    fontSize = 10.sp,
+                    fontWeight =
+                        FontWeight.SemiBold,
+                    color =
+                        if (group.isEnabled) {
+                            accent
+                        } else {
+                            Color(0xFF64748B)
                         }
+                )
+
+                Surface(
+                    color =
+                        Color.White.copy(
+                            alpha =
+                                if (group.isEnabled) {
+                                    0.65f
+                                } else {
+                                    1f
+                                }
+                        ),
+                    shape =
+                        RoundedCornerShape(10.dp),
+                    border =
+                        if (group.isEnabled) {
+                            null
+                        } else {
+                            BorderStroke(
+                                1.dp,
+                                Color(0xFFE2E8F0)
+                            )
+                        },
+                    modifier =
+                        Modifier.fillMaxWidth()
+                ) {
+
+                    Text(
+                        text =
+                            "Min Fare: ${
+                                if (goToMinFare > 0f) {
+                                    "\u20B9${goToMinFare.toInt()}"
+                                } else {
+                                    "No minimum"
+                                }
+                            }   |   Pickup: ${
+                                if (group.maxPickupKm > 0f) {
+                                    "${group.maxPickupKm} km"
+                                } else {
+                                    "No limit"
+                                }
+                            }   |   Drop: ${
+                                if (group.maxDropKm > 0f) {
+                                    "${group.maxDropKm} km"
+                                } else {
+                                    "No limit"
+                                }
+                            }",
+                        modifier =
+                            Modifier.padding(
+                                horizontal = 9.dp,
+                                vertical = 7.dp
+                            ),
+                        fontSize = 10.sp,
+                        fontWeight =
+                            FontWeight.Medium,
+                        color =
+                            if (group.isEnabled) {
+                                accent
+                            } else {
+                                Color(0xFF64748B)
+                            },
+                        maxLines = 2
+                    )
+                }
+
+            } else {
+
+                Text(
+                    text =
+                        "Matching destination areas will be blocked",
+                    fontSize = 10.sp,
+                    fontWeight =
+                        FontWeight.SemiBold,
+                    color =
+                        if (group.isEnabled) {
+                            accent
+                        } else {
+                            Color(0xFF64748B)
+                        }
+                )
+            }
+
+            // Edit and delete
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth(),
+                horizontalArrangement =
+                    Arrangement.spacedBy(8.dp)
+            ) {
+
+                Surface(
+                    color =
+                        Color.White.copy(
+                            alpha = 0.80f
+                        ),
+                    shape =
+                        RoundedCornerShape(10.dp),
+                    border =
+                        BorderStroke(
+                            1.dp,
+                            Color(0xFFE2E8F0)
+                        ),
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .clickable {
+                                onEdit()
+                            }
+                ) {
+
+                    Row(
+                        modifier =
+                            Modifier.padding(
+                                vertical = 8.dp
+                            ),
+                        horizontalArrangement =
+                            Arrangement.Center,
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription =
+                                "Edit group",
+                            tint =
+                                Color(0xFF475569),
+                            modifier =
+                                Modifier.size(16.dp)
+                        )
+
+                        Spacer(
+                            Modifier.width(6.dp)
+                        )
+
+                        Text(
+                            text = "Edit",
+                            fontSize = 11.sp,
+                            fontWeight =
+                                FontWeight.SemiBold,
+                            color =
+                                Color(0xFF475569)
+                        )
                     }
                 }
 
-                IconButton(
-                    onClick = onEdit,
-                    modifier = Modifier.size(34.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Edit,
-                        contentDescription = "Edit group",
-                        tint = Color(0xFF475569),
-                        modifier = Modifier.size(19.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(34.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "Delete group",
-                        tint = NoGoRed,
-                        modifier = Modifier.size(19.dp)
-                    )
-                }
-
-                Switch(
-                    checked = group.isEnabled,
-                    onCheckedChange = { onToggle() },
-                    colors = SwitchDefaults.colors(
-                        checkedTrackColor = accent,
-                        checkedThumbColor = Color.White
-                    )
-                )
-            }
-
-            if (group.keywords.isNotEmpty()) {
-                Spacer(Modifier.height(7.dp))
-                Text(
-                    group.keywords.take(5).joinToString("   \u2022   "),
-                    fontSize = 11.sp,
-                    color = Color(0xFF475569),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            if (isGoTo) {
-                val goToMinFare =
-                    if (group.maxFare > 0f) group.maxFare else group.minFare
-
-                Spacer(Modifier.height(7.dp))
                 Surface(
-                    color = GoToGreenBg.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(8.dp)
+                    color =
+                        Color.White.copy(
+                            alpha = 0.80f
+                        ),
+                    shape =
+                        RoundedCornerShape(10.dp),
+                    border =
+                        BorderStroke(
+                            1.dp,
+                            Color(0xFFE2E8F0)
+                        ),
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .clickable {
+                                onDelete()
+                            }
                 ) {
-                    Text(
-                        text = "Minimum Fare: ${
-                            if (goToMinFare > 0f) "â‚¹${goToMinFare.toInt()}" else "No minimum"
-                        }   \u2022   Pickup: ${
-                            if (group.maxPickupKm > 0f) "${group.maxPickupKm} km" else "No limit"
-                        }   \u2022   Drop: ${
-                            if (group.maxDropKm > 0f) "${group.maxDropKm} km" else "No limit"
-                        }",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                        fontSize = 10.sp,
-                        maxLines = 2,
-                        fontWeight = FontWeight.Medium,
-                        color = GoToGreen
-                    )
+
+                    Row(
+                        modifier =
+                            Modifier.padding(
+                                vertical = 8.dp
+                            ),
+                        horizontalArrangement =
+                            Arrangement.Center,
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription =
+                                "Delete group",
+                            tint = NoGoRed,
+                            modifier =
+                                Modifier.size(16.dp)
+                        )
+
+                        Spacer(
+                            Modifier.width(6.dp)
+                        )
+
+                        Text(
+                            text = "Delete",
+                            fontSize = 11.sp,
+                            fontWeight =
+                                FontWeight.SemiBold,
+                            color = NoGoRed
+                        )
+                    }
                 }
             }
         }
     }
 }
-
 @Composable
 private fun GroupEditorDialog(
     group: AreaGroup?,

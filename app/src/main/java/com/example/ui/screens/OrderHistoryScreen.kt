@@ -632,6 +632,7 @@ fun OrderHistoryScreen(
 }
 
 // HISTORY COMPACT UI SAFE V3
+// HISTORY_CARD_STYLE_V4
 @Composable
 private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
     val orderTimestamp =
@@ -663,15 +664,96 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
         sdf.format(Date(orderTimestamp))
     }
 
+    // Visual status only. History decision logic below is unchanged.
+    val historyVisualStatus =
+        when {
+            item.status == OrderStatus.PROCESSING ->
+                OrderStatus.PROCESSING
+
+            item.status == OrderStatus.ACCEPTED ->
+                OrderStatus.ACCEPTED
+
+            item.status == OrderStatus.FAILED ->
+                OrderStatus.FAILED
+
+            item.status == OrderStatus.SKIPPED ->
+                OrderStatus.SKIPPED
+
+            isNoGoOrder(item) ||
+                item.status == OrderStatus.REJECTED ->
+                OrderStatus.REJECTED
+
+            item.status == OrderStatus.MISSED ->
+                OrderStatus.MISSED
+
+            else ->
+                OrderStatus.IGNORED
+        }
+
+    val historyCardBackground =
+        when (historyVisualStatus) {
+            OrderStatus.ACCEPTED ->
+                StatusActiveGreenBg
+
+            OrderStatus.IGNORED ->
+                StatusWarningYellowBg
+
+            OrderStatus.REJECTED ->
+                StatusInactiveRedBg
+
+            OrderStatus.PROCESSING ->
+                Color(0xFFFFF8E1)
+
+            OrderStatus.FAILED ->
+                Color(0xFFFFEBEE)
+
+            OrderStatus.SKIPPED ->
+                Color(0xFFF3EEFA)
+
+            OrderStatus.MISSED ->
+                Color(0xFFF8FAFC)
+        }
+
+    val historyCardAccent =
+        when (historyVisualStatus) {
+            OrderStatus.ACCEPTED ->
+                StatusActiveGreen
+
+            OrderStatus.IGNORED ->
+                StatusWarningYellow
+
+            OrderStatus.REJECTED ->
+                StatusInactiveRed
+
+            OrderStatus.PROCESSING ->
+                Color(0xFFF59E0B)
+
+            OrderStatus.FAILED ->
+                Color(0xFFC62828)
+
+            OrderStatus.SKIPPED ->
+                Color(0xFF7E57C2)
+
+            OrderStatus.MISSED ->
+                Color(0xFF94A3B8)
+        }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardBackground),
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, CardBorderDefault)
+        colors =
+            CardDefaults.cardColors(
+                containerColor = historyCardBackground
+            ),
+        shape = RoundedCornerShape(14.dp),
+        border =
+            BorderStroke(
+                1.dp,
+                historyCardAccent.copy(alpha = 0.65f)
+            )
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             val isNoGo = isNoGoOrder(item)
             val effectiveStatus = when {
@@ -702,8 +784,8 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
                     }
                     Box(
                         modifier = Modifier
-                            .background(platformBg, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                            .background(platformBg, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
                     ) {
                         Text(
                             item.platform.displayName,
@@ -716,8 +798,8 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
                     // Vehicle badge
                     Box(
                         modifier = Modifier
-                            .background(BlueContainer, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                            .background(BlueContainer, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
                     ) {
                         Text(
                             item.vehicleType.name,
@@ -785,8 +867,8 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
                 }
                 Box(
                     modifier = Modifier
-                        .background(statusBg, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                        .background(statusBg, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
                     Text(
                         text = statusLabel,
@@ -813,9 +895,17 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
             // Row 3: Bold Fare (14sp) + Base/Tip breakdown
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFAFAFA)),
-                border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+                shape = RoundedCornerShape(10.dp),
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor =
+                            Color.White.copy(alpha = 0.84f)
+                    ),
+                border =
+                    BorderStroke(
+                        1.dp,
+                        historyCardAccent.copy(alpha = 0.20f)
+                    )
             ) {
                 Row(
                     modifier = Modifier
@@ -884,12 +974,12 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
             ) {
                 // Pickup distance chip
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(9.dp),
                     color = BlueContainer,
                     border = BorderStroke(1.dp, BlueSecondary.copy(alpha = 0.25f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("📍", fontSize = 10.sp)
@@ -905,12 +995,12 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
 
                 // Trip distance chip
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(9.dp),
                     color = Color(0xFFF1F5F9),
                     border = BorderStroke(1.dp, CardBorderDefault)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("🎯", fontSize = 10.sp)
@@ -972,8 +1062,8 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(StatusActiveGreenBg, RoundedCornerShape(8.dp))
-                            .border(BorderStroke(1.dp, StatusActiveGreen.copy(alpha = 0.5f)), RoundedCornerShape(8.dp))
+                            .background(StatusActiveGreenBg, RoundedCornerShape(10.dp))
+                            .border(BorderStroke(1.dp, StatusActiveGreen.copy(alpha = 0.5f)), RoundedCornerShape(10.dp))
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         Row(
@@ -1118,8 +1208,8 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(StatusWarningYellowBg, RoundedCornerShape(8.dp))
-                            .border(BorderStroke(1.dp, StatusWarningYellow.copy(alpha = 0.6f)), RoundedCornerShape(8.dp))
+                            .background(StatusWarningYellowBg, RoundedCornerShape(10.dp))
+                            .border(BorderStroke(1.dp, StatusWarningYellow.copy(alpha = 0.6f)), RoundedCornerShape(10.dp))
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         Row(
@@ -1170,8 +1260,8 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(StatusInactiveRedBg, RoundedCornerShape(8.dp))
-                            .border(BorderStroke(1.dp, StatusInactiveRed.copy(alpha = 0.5f)), RoundedCornerShape(8.dp))
+                            .background(StatusInactiveRedBg, RoundedCornerShape(10.dp))
+                            .border(BorderStroke(1.dp, StatusInactiveRed.copy(alpha = 0.5f)), RoundedCornerShape(10.dp))
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         Row(
@@ -1203,8 +1293,8 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFFFF9C4), RoundedCornerShape(8.dp))
-                            .border(BorderStroke(1.dp, Color(0xFFFBC02D).copy(alpha = 0.6f)), RoundedCornerShape(8.dp))
+                            .background(Color(0xFFFFF9C4), RoundedCornerShape(10.dp))
+                            .border(BorderStroke(1.dp, Color(0xFFFBC02D).copy(alpha = 0.6f)), RoundedCornerShape(10.dp))
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         Row(
@@ -1236,8 +1326,8 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFFFEBEE), RoundedCornerShape(8.dp))
-                            .border(BorderStroke(1.dp, Color(0xFFEF9A9A)), RoundedCornerShape(8.dp))
+                            .background(Color(0xFFFFEBEE), RoundedCornerShape(10.dp))
+                            .border(BorderStroke(1.dp, Color(0xFFEF9A9A)), RoundedCornerShape(10.dp))
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         Row(
@@ -1269,8 +1359,8 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFEDE7F6), RoundedCornerShape(8.dp))
-                            .border(BorderStroke(1.dp, Color(0xFFD1C4E9)), RoundedCornerShape(8.dp))
+                            .background(Color(0xFFEDE7F6), RoundedCornerShape(10.dp))
+                            .border(BorderStroke(1.dp, Color(0xFFD1C4E9)), RoundedCornerShape(10.dp))
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         Row(
@@ -1302,8 +1392,8 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFF5F5F5), RoundedCornerShape(8.dp))
-                            .border(BorderStroke(1.dp, Color(0xFFE0E0E0)), RoundedCornerShape(8.dp))
+                            .background(Color(0xFFF5F5F5), RoundedCornerShape(10.dp))
+                            .border(BorderStroke(1.dp, Color(0xFFE0E0E0)), RoundedCornerShape(10.dp))
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         Row(
@@ -1341,7 +1431,13 @@ private fun HistoryCard(item: OrderHistoryItem, appSettings: AppSettings) {
  * e.g. "Fare ₹113 matched, Pickup 0.6km matched"
  */
 private fun normalizeHistoryReasonText(raw: String): String {
+    // PLUS_AMOUNT_MOJIBAKE_DISPLAY_FIX_V1
+    // Repairs old +Amount rows that were already stored with broken UTF-8 symbols.
     return raw
+        .replace("\u00E2\u201A\u00B9", "\u20B9")
+        .replace("\u00E2\u2030\u00A5", ">=")
+        .replace("\u00E2\u2030\u00A4", "<=")
+        .replace("\u00E2\u20AC\u00A2", " | ")
         // Old rows saved the UTF-8 bullet as mojibake.
         .replace("Ã¢â‚¬Â¢", " | ")
         .replace("Ã¢â€°Â¥", ">=")
@@ -1463,6 +1559,12 @@ private fun formatGenericFilterFailureV7(
             ignoreCase = true
         )
 
+    val filter3Failed =
+        clean.contains(
+            "Filter 3 failed",
+            ignoreCase = true
+        )
+
     return buildString {
         if (filter1 != null) {
             append(
@@ -1477,6 +1579,12 @@ private fun formatGenericFilterFailureV7(
         if (filter2Failed) {
             append(
                 "\nFilter 2: Not Match ❌"
+            )
+        }
+
+        if (filter3Failed) {
+            append(
+                "\nFilter 3: Not Match ❌"
             )
         }
     }
@@ -1540,7 +1648,7 @@ private fun formatRejectedReason(
     if (
         raw.contains("Limits:", ignoreCase = true) ||
         raw.contains("Filter 2:", ignoreCase = true) ||
-        raw.contains("Filter 2:", ignoreCase = true) ||
+        raw.contains("Filter 3:", ignoreCase = true) ||
         raw.contains("Distance Only", ignoreCase = true) ||
         raw.contains("Why ignored:", ignoreCase = true)
     ) {
@@ -1589,11 +1697,15 @@ private fun formatIgnoredFilters(
             it.startsWith(
                 "Filter 2:",
                 ignoreCase = true
-            ) ||
-                it.startsWith(
-                    "Filter 2:",
-                    ignoreCase = true
-                )
+            )
+        }.orEmpty()
+
+    val filter3Line =
+        lines.firstOrNull {
+            it.startsWith(
+                "Filter 3:",
+                ignoreCase = true
+            )
         }.orEmpty()
 
     // HISTORY_REASON_ACCURACY_V2
@@ -1644,19 +1756,22 @@ private fun formatIgnoredFilters(
             settings.isSecondaryBothFilterEnabled &&
             filter2Line.isNotBlank()
         ) {
-            val filter2Reason =
-                filter2Line
-                    .substringAfter(":")
-                    .trim()
-
             result +=
                 "Filter 2: Not Match ❌"
+        }
+
+        if (
+            settings.isTertiaryBothFilterEnabled &&
+            filter3Line.isNotBlank()
+        ) {
+            result +=
+                "Filter 3: Not Match ❌"
         }
 
         return result.joinToString("\n")
     }
 
-    if (limitsLine.isBlank() && filter2Line.isBlank()) {
+    if (limitsLine.isBlank() && filter2Line.isBlank() && filter3Line.isBlank()) {
         return normalizedReason
             .lines()
             .map { it.trim() }
@@ -1755,6 +1870,54 @@ private fun formatIgnoredFilters(
         }
 
         result += "Filter 2: $filter2Text"
+    }
+
+    if (
+        settings.isTertiaryBothFilterEnabled &&
+        filter3Line.isNotBlank()
+    ) {
+        val filter3PickupMax =
+            getNumber(
+                """Pickup.*?max\s*([0-9.]+)""",
+                filter3Line
+            ) ?: settings.tertiaryBothMaxPickupDistanceKm
+
+        val filter3TripMax =
+            getNumber(
+                """Trip.*?max\s*([0-9.]+)""",
+                filter3Line
+            ) ?: settings.tertiaryBothMaxDropDistanceKm
+
+        val filter3PickupFailed =
+            Regex(
+                """Pickup.*?>\s*max""",
+                RegexOption.IGNORE_CASE
+            ).containsMatchIn(filter3Line)
+
+        val filter3TripFailed =
+            Regex(
+                """Trip.*?>\s*max""",
+                RegexOption.IGNORE_CASE
+            ).containsMatchIn(filter3Line)
+
+        val filter3Text =
+            when {
+                filter3PickupFailed &&
+                    filter3TripFailed ->
+                    "Pickup + Trip exceed limits"
+
+                filter3PickupFailed ->
+                    "Pickup exceeds ${km(filter3PickupMax)} km"
+
+                filter3TripFailed ->
+                    "Trip exceeds ${km(filter3TripMax)} km"
+
+                else ->
+                    "Filter not matched"
+            }
+
+        result +=
+            "Filter 3: $filter3Text"
     }
 
     return result.joinToString("\n")

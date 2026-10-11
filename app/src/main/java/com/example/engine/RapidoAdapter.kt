@@ -329,6 +329,342 @@ object RapidoAdapter {
         }
     }
 
+    // RAPIDO_AUTO_PRIORITY_DROP_AFTER_CLICK_V1
+    // Auto Priority is clicked FIRST. This helper runs only AFTER that click
+    // to recover the visible destination for History/overlay.
+    // RAPIDO_AUTO_PRIORITY_PRECLICK_DROP_V2
+    // Pure text helper used by the fast Auto Priority pre-click snapshot.
+    // It does not traverse Accessibility nodes itself.
+    fun extractAutoPriorityDropAddressFromTexts(
+        texts: List<String>
+    ): String? {
+        if (texts.isEmpty()) {
+            return null
+        }
+
+        fun usableAddress(
+            raw: String?
+        ): String? {
+            val clean =
+                cleanRapidoAddress(raw)
+
+            if (clean.length < 3) {
+                return null
+            }
+
+            val lower =
+                clean.lowercase()
+
+            if (
+                lower == "drop" ||
+                lower == "destination" ||
+                lower == "to" ||
+                lower == "pickup" ||
+                lower == "nearby" ||
+                lower == "accept" ||
+                lower == "auto" ||
+                lower == "services" ||
+                lower.contains(
+                    "auto priority"
+                ) ||
+                lower.contains(
+                    "priority order"
+                ) ||
+                lower.contains(
+                    "all ride filters"
+                ) ||
+                lower.contains(
+                    "checking order status"
+                ) ||
+                lower.contains(
+                    "thanks for accepting"
+                )
+            ) {
+                return null
+            }
+
+            if (
+                KM_REGEX.containsMatchIn(
+                    clean
+                ) ||
+                RUPEE_AMOUNT_REGEX
+                    .matcher(clean)
+                    .find()
+            ) {
+                return null
+            }
+
+            if (
+                isInvalidAddress(clean) ||
+                matchesBlocklist(clean)
+            ) {
+                return null
+            }
+
+            return clean
+        }
+
+        // Strongest fast-snapshot source. The service prefixes text from
+        // destination/drop view IDs with "Drop:" during the same tree scan.
+        for (raw in texts) {
+            val trimmed =
+                raw.trim()
+
+            val lower =
+                trimmed.lowercase()
+
+            if (
+                lower.startsWith(
+                    "drop:"
+                ) ||
+                lower.startsWith(
+                    "destination:"
+                )
+            ) {
+                usableAddress(
+                    trimmed.substringAfter(
+                        ":"
+                    )
+                )?.let {
+                    return it
+                }
+            }
+        }
+
+        // Explicit label followed by its value.
+        for (i in texts.indices) {
+            val lower =
+                texts[i]
+                    .trim()
+                    .lowercase()
+
+            if (
+                lower == "drop" ||
+                lower == "destination" ||
+                lower == "to"
+            ) {
+                val end =
+                    minOf(
+                        i + 3,
+                        texts.lastIndex
+                    )
+
+                if (i + 1 <= end) {
+                    for (
+                        j in
+                        (i + 1)..end
+                    ) {
+                        usableAddress(
+                            texts[j]
+                        )?.let {
+                            return it
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rapido normally shows pickup distance, pickup text, trip distance,
+        // then destination. Search after the final visible km row.
+        val lastKmIndex =
+            texts.indexOfLast {
+                KM_REGEX.containsMatchIn(
+                    it
+                )
+            }
+
+        if (lastKmIndex >= 0) {
+            for (
+                i in
+                (lastKmIndex + 1)
+                    until texts.size
+            ) {
+                usableAddress(
+                    texts[i]
+                )?.let {
+                    return it
+                }
+            }
+        }
+
+        // Last conservative fallback: pickup is normally above destination.
+        return texts
+            .asReversed()
+            .firstNotNullOfOrNull {
+                usableAddress(it)
+            }
+    }
+
+    fun extractAutoPriorityDropAddressOnly(
+        root: AccessibilityNodeInfo?
+    ): String? {
+        if (root == null) return null
+
+        val rootPkg =
+            root.packageName
+                ?.toString()
+                .orEmpty()
+
+        if (isSmartDrivoPackage(rootPkg)) {
+            return null
+        }
+
+        val entries =
+            mutableListOf<TextNodeEntry>()
+
+        collectEntries(
+            root,
+            entries,
+            rootPkg
+        )
+
+        val validEntries =
+            entries.filter { entry ->
+                val pkg =
+                    entry.packageName.orEmpty()
+
+                !isSmartDrivoPackage(pkg) &&
+                    (
+                        pkg.isEmpty() ||
+                            isRapidoPackage(pkg) ||
+                            pkg ==
+                                "com.rapido.passenger"
+                    )
+            }
+
+        fun usableAddress(
+            raw: String?
+        ): String? {
+            val clean =
+                cleanRapidoAddress(raw)
+
+            if (clean.length < 3) {
+                return null
+            }
+
+            val lower =
+                clean.lowercase()
+
+            if (
+                lower.contains("auto priority") ||
+                lower.contains("priority order") ||
+                lower.contains("all ride filters")
+            ) {
+                return null
+            }
+
+            if (
+                isInvalidAddress(clean) ||
+                matchesBlocklist(clean)
+            ) {
+                return null
+            }
+
+            return clean
+        }
+
+        // Strongest source: destination/drop view IDs.
+        for (entry in validEntries) {
+            val id =
+                entry.viewId
+                    ?.lowercase()
+                    .orEmpty()
+
+            if (
+                id.contains("drop") ||
+                id.contains("dest") ||
+                id.contains("destination") ||
+                id.contains("tv_drop")
+            ) {
+                usableAddress(entry.text)
+                    ?.let {
+                        return it
+                    }
+            }
+        }
+
+        // Explicit "Drop:", "Destination:", "To:" labels.
+        for (i in validEntries.indices) {
+            val raw =
+                validEntries[i].text.trim()
+
+            val lower =
+                raw.lowercase()
+
+            val prefixed =
+                when {
+                    lower.startsWith("drop:") ->
+                        raw.substringAfter(":")
+
+                    lower.startsWith("destination:") ->
+                        raw.substringAfter(":")
+
+                    lower.startsWith("to:") ->
+                        raw.substringAfter(":")
+
+                    else ->
+                        null
+                }
+
+            usableAddress(prefixed)
+                ?.let {
+                    return it
+                }
+
+            if (
+                lower == "drop" ||
+                lower == "destination" ||
+                lower == "to"
+            ) {
+                val end =
+                    minOf(
+                        i + 3,
+                        validEntries.lastIndex
+                    )
+
+                if (i + 1 <= end) {
+                    for (j in (i + 1)..end) {
+                        usableAddress(
+                            validEntries[j].text
+                        )?.let {
+                            return it
+                        }
+                    }
+                }
+            }
+        }
+
+        // Destination normally follows the final km row.
+        val lastKmIndex =
+            validEntries.indexOfLast {
+                KM_REGEX.containsMatchIn(
+                    it.text
+                )
+            }
+
+        if (lastKmIndex >= 0) {
+            for (
+                i in
+                (lastKmIndex + 1)
+                    until validEntries.size
+            ) {
+                usableAddress(
+                    validEntries[i].text
+                )?.let {
+                    return it
+                }
+            }
+        }
+
+        // Conservative fallback: Rapido card usually shows pickup before drop,
+        // so take the last valid address-like line.
+        return validEntries
+            .asReversed()
+            .firstNotNullOfOrNull {
+                usableAddress(it.text)
+            }
+    }
+
     /**
      * FIX 2 - Stats showing wrong data:
      * In RapidoAdapter.kt, extract fare correctly:
@@ -1329,43 +1665,708 @@ object RapidoAdapter {
      * In addition:
      * - If the root node contains "Today's Earnings" or "ON DUTY" or "Blue Performance" -> HOME SCREEN, skip completely.
      */
-    fun validateRapidoOrderPopup(root: AccessibilityNodeInfo?): RapidoPopupValidation {
-        if (root == null) {
-            return RapidoPopupValidation(isValid = false, failureReason = "Null root node")
-        }
-        val pkg = root.packageName?.toString().orEmpty()
-        if (isSmartDrivoPackage(pkg)) {
-            return RapidoPopupValidation(isValid = false, failureReason = "SmartDrivo UI package")
+    // RAPIDO_ONE_PASS_SCAN_V1
+    // Traverse the Rapido accessibility tree exactly once.
+    // Collect order text + home-screen text + Accept node together.
+    // Step 6B will connect this scanner to live validation.
+    private data class RapidoOnePassScan(
+        val entries: List<TextNodeEntry>,
+        val orderTexts: List<String>,
+        val homeTexts: List<String>,
+        val acceptButton: DetectedButton?,
+        val isHomeScreen: Boolean,
+        val nodeCount: Int
+    )
+
+    private fun collectRapidoOnePassScan(
+        root: AccessibilityNodeInfo
+    ): RapidoOnePassScan {
+
+        val entries =
+            mutableListOf<TextNodeEntry>()
+
+        val orderTexts =
+            mutableListOf<String>()
+
+        val homeTexts =
+            mutableListOf<String>()
+
+        val rootPkg =
+            root.packageName
+                ?.toString()
+                .orEmpty()
+
+        val queue =
+            ArrayDeque<Pair<AccessibilityNodeInfo, String>>()
+
+        queue.add(
+            Pair(root, rootPkg)
+        )
+
+        var acceptButton: DetectedButton? = null
+        var nodeCount = 0
+
+        while (
+            queue.isNotEmpty() &&
+            nodeCount < 350
+        ) {
+
+            val item =
+                queue.removeFirst()
+
+            val node =
+                item.first
+
+            val inheritedPkg =
+                item.second
+
+            nodeCount++
+
+            val nodePkg =
+                node.packageName
+                    ?.toString()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: inheritedPkg
+
+            if (isSmartDrivoPackage(nodePkg)) {
+                continue
+            }
+
+            val text =
+                node.text
+                    ?.toString()
+                    ?.trim()
+
+            val desc =
+                node.contentDescription
+                    ?.toString()
+                    ?.trim()
+
+            if (!text.isNullOrEmpty()) {
+                homeTexts.add(text)
+            }
+
+            if (!desc.isNullOrEmpty()) {
+                homeTexts.add(desc)
+            }
+
+            val content =
+                when {
+                    !text.isNullOrEmpty() -> text
+                    !desc.isNullOrEmpty() -> desc
+                    else -> null
+                }
+
+            if (!content.isNullOrEmpty()) {
+
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+
+                entries.add(
+                    TextNodeEntry(
+                        text = content,
+                        bounds = bounds,
+                        viewId = node.viewIdResourceName,
+                        packageName = nodePkg
+                    )
+                )
+
+                orderTexts.add(content)
+            }
+
+            if (acceptButton == null) {
+
+                val fullId =
+                    node.viewIdResourceName
+                        .orEmpty()
+
+                val bareId =
+                    fullId.substringAfterLast(":id/")
+
+                val idMatches =
+                    BARE_ACCEPT_IDS.any { known ->
+                        bareId.equals(
+                            known,
+                            ignoreCase = true
+                        )
+                    }
+
+                val labelMatches =
+                    isAcceptText(text) ||
+                        isAcceptDescription(desc)
+
+                if (idMatches || labelMatches) {
+
+                    val target =
+                        resolveClickableTarget(node)
+
+                    val targetBounds = Rect()
+                    target.getBoundsInScreen(
+                        targetBounds
+                    )
+
+                    if (
+                        targetBounds.width() > 0 &&
+                        targetBounds.height() > 0
+                    ) {
+
+                        val targetPkg =
+                            target.packageName
+                                ?.toString()
+                                ?.takeIf { it.isNotBlank() }
+                                ?: nodePkg
+
+                        acceptButton =
+                            DetectedButton(
+                                node = target,
+                                buttonId =
+                                    if (fullId.isNotBlank()) {
+                                        fullId
+                                    } else {
+                                        text
+                                            ?: desc
+                                            ?: "Accept"
+                                    },
+                                packageName = targetPkg,
+                                method = "ONE_PASS"
+                            )
+                    }
+                }
+            }
+
+            for (i in 0 until node.childCount) {
+
+                val child =
+                    node.getChild(i)
+
+                if (child != null) {
+                    queue.add(
+                        Pair(child, nodePkg)
+                    )
+                }
+            }
         }
 
-        // Requirement 3: Check if root contains "Today's Earnings" or "ON DUTY" or "Blue Performance"
-        if (isRapidoHomeScreen(root)) {
+        return RapidoOnePassScan(
+            entries = entries,
+            orderTexts = orderTexts,
+            homeTexts = homeTexts,
+            acceptButton = acceptButton,
+            isHomeScreen =
+                isRapidoHomeScreenTexts(
+                    homeTexts
+                ),
+            nodeCount = nodeCount
+        )
+    }
+    // RAPIDO_NORMAL_SINGLE_PASS_V1
+    // Normal Rapido offer validation common-path:
+    // - one accessibility-tree traversal collects ride text/view IDs
+    // - the same traversal detects the strict Accept target
+    // - Home-screen text is captured during that traversal
+    // - full drop address is preserved
+    // - legacy multi-search Accept detection remains as fallback only
+    private data class RapidoNormalSinglePassScan(
+        val entries: List<TextNodeEntry>,
+        val homeTexts: List<String>,
+        val acceptButton: DetectedButton?,
+        val visitedNodes: Int
+    )
+
+    private fun scanRapidoNormalOfferSinglePass(
+        root: AccessibilityNodeInfo
+    ): RapidoNormalSinglePassScan {
+        val entries =
+            ArrayList<TextNodeEntry>(48)
+
+        val homeTexts =
+            ArrayList<String>(48)
+
+        val rootPkg =
+            root.packageName
+                ?.toString()
+                .orEmpty()
+
+        var visitedNodes = 0
+
+        var bestAccept:
+            DetectedButton? = null
+
+        var bestAcceptScore = 0
+
+        fun considerAccept(
+            node: AccessibilityNodeInfo,
+            text: String?,
+            desc: String?,
+            viewId: String?,
+            effectivePkg: String
+        ) {
+            val idLower =
+                viewId
+                    ?.trim()
+                    ?.lowercase()
+                    .orEmpty()
+
+            val idMatch =
+                BARE_ACCEPT_IDS.any { bare ->
+                    val b =
+                        bare.lowercase()
+
+                    idLower == b ||
+                        idLower.endsWith(
+                            "/$b"
+                        ) ||
+                        idLower.endsWith(
+                            ":id/$b"
+                        )
+                }
+
+            val textMatch =
+                isAcceptText(text)
+
+            val descMatch =
+                isAcceptDescription(desc)
+
+            if (
+                !idMatch &&
+                !textMatch &&
+                !descMatch
+            ) {
+                return
+            }
+
+            val target =
+                resolveClickableTarget(
+                    node
+                )
+
+            val targetPkg =
+                target.packageName
+                    ?.toString()
+                    ?.takeIf {
+                        it.isNotBlank()
+                    }
+                    ?: effectivePkg
+                        .ifBlank {
+                            rootPkg
+                        }
+
+            val score =
+                when {
+                    idMatch &&
+                        target.isClickable ->
+                        400
+
+                    idMatch ->
+                        350
+
+                    (
+                        textMatch ||
+                            descMatch
+                    ) &&
+                        target.isClickable ->
+                        300
+
+                    textMatch ||
+                        descMatch ->
+                        200
+
+                    else ->
+                        0
+                }
+
+            if (
+                score <= bestAcceptScore
+            ) {
+                return
+            }
+
+            val label =
+                text
+                    ?.takeIf {
+                        it.isNotBlank()
+                    }
+                    ?: desc
+                        ?.takeIf {
+                            it.isNotBlank()
+                        }
+                    ?: viewId
+                    ?: "Accept"
+
+            bestAccept =
+                DetectedButton(
+                    node =
+                        target,
+                    buttonId =
+                        viewId
+                            ?: "single_pass_accept ($label)",
+                    packageName =
+                        targetPkg,
+                    method =
+                        if (idMatch) {
+                            "SINGLE_PASS_RESOURCE_ID"
+                        } else {
+                            "SINGLE_PASS_TEXT"
+                        }
+                )
+
+            bestAcceptScore =
+                score
+        }
+
+        fun scan(
+            node: AccessibilityNodeInfo?,
+            inheritedPkg: String?,
+            depth: Int
+        ) {
+            if (node == null) {
+                return
+            }
+
+            visitedNodes++
+
+            val nodePkg =
+                node.packageName
+                    ?.toString()
+
+            val effectivePkg =
+                nodePkg
+                    ?.takeIf {
+                        it.isNotBlank()
+                    }
+                    ?: inheritedPkg
+                    ?: rootPkg
+
+            val text =
+                node.text
+                    ?.toString()
+                    ?.trim()
+
+            val desc =
+                node.contentDescription
+                    ?.toString()
+                    ?.trim()
+
+            // Preserve the old Home-screen check scope without another tree walk.
+            if (
+                depth <= 15 &&
+                homeTexts.size <= 80
+            ) {
+                if (!text.isNullOrEmpty()) {
+                    homeTexts.add(
+                        text
+                    )
+                }
+
+                if (
+                    !desc.isNullOrEmpty() &&
+                    homeTexts.size <= 80
+                ) {
+                    homeTexts.add(
+                        desc
+                    )
+                }
+            }
+
+            if (
+                isSmartDrivoPackage(
+                    effectivePkg
+                )
+            ) {
+                return
+            }
+
+            val content =
+                when {
+                    !text.isNullOrEmpty() ->
+                        text
+
+                    !desc.isNullOrEmpty() ->
+                        desc
+
+                    else ->
+                        null
+                }
+
+            if (
+                !content.isNullOrEmpty()
+            ) {
+                // Bounds are intentionally not read for every text node.
+                // Normal parsing uses text/viewId/package only.
+                entries.add(
+                    TextNodeEntry(
+                        text =
+                            content,
+                        bounds =
+                            Rect(),
+                        viewId =
+                            node.viewIdResourceName,
+                        packageName =
+                            effectivePkg
+                    )
+                )
+            }
+
+            considerAccept(
+                node =
+                    node,
+                text =
+                    text,
+                desc =
+                    desc,
+                viewId =
+                    node.viewIdResourceName,
+                effectivePkg =
+                    effectivePkg
+            )
+
+            for (
+                i in
+                0 until node.childCount
+            ) {
+                scan(
+                    node.getChild(i),
+                    effectivePkg,
+                    depth + 1
+                )
+            }
+        }
+
+        scan(
+            root,
+            rootPkg,
+            0
+        )
+
+        return RapidoNormalSinglePassScan(
+            entries =
+                entries,
+            homeTexts =
+                homeTexts,
+            acceptButton =
+                bestAccept,
+            visitedNodes =
+                visitedNodes
+        )
+    }
+
+    private fun extractOrderDataFromSinglePassEntries(
+        entries: List<TextNodeEntry>,
+        skipPickupAddress: Boolean
+    ): RapidoOrderData {
+        val validEntries =
+            entries.filter { entry ->
+                val pkg =
+                    entry.packageName
+                        .orEmpty()
+
+                !isSmartDrivoPackage(pkg) &&
+                    (
+                        pkg.isEmpty() ||
+                            isRapidoPackage(pkg) ||
+                            pkg ==
+                                "com.rapido.passenger"
+                    )
+            }
+
+        val textList =
+            validEntries.map {
+                it.text
+            }
+
+        val data =
+            extractOrderDataFromTexts(
+                texts =
+                    textList,
+                skipPickupAddress =
+                    skipPickupAddress
+            )
+
+        var pickupFromId:
+            String? = null
+
+        var dropFromId:
+            String? = null
+
+        for (entry in validEntries) {
+            val id =
+                entry.viewId
+                    ?.lowercase()
+                    .orEmpty()
+
+            if (
+                pickupFromId == null &&
+                (
+                    id.contains("pickup") ||
+                        id.contains("source") ||
+                        id.contains("start_loc") ||
+                        id.contains("tv_pickup")
+                )
+            ) {
+                val clean =
+                    cleanRapidoAddress(
+                        entry.text
+                    )
+
+                if (
+                    clean.length >= 3 &&
+                    !isInvalidAddress(clean)
+                ) {
+                    pickupFromId =
+                        clean
+                }
+            }
+
+            if (
+                dropFromId == null &&
+                (
+                    id.contains("drop") ||
+                        id.contains("dest") ||
+                        id.contains("tv_drop")
+                )
+            ) {
+                val clean =
+                    cleanRapidoAddress(
+                        entry.text
+                    )
+
+                if (
+                    clean.length >= 3 &&
+                    !isInvalidAddress(clean)
+                ) {
+                    dropFromId =
+                        clean
+                }
+            }
+        }
+
+        var bookingId:
+            String? = null
+
+        val bookingRegex =
+            Regex(
+                "(?:CRN|ID|#|Booking\\s*ID)[:\\s-]*([A-Za-z0-9-]+)",
+                RegexOption.IGNORE_CASE
+            )
+
+        for (entry in validEntries) {
+            val match =
+                bookingRegex.find(
+                    entry.text
+                )
+
+            if (match != null) {
+                bookingId =
+                    match.groupValues[1]
+                        .trim()
+
+                break
+            }
+        }
+
+        val rawPickup =
+            pickupFromId
+                ?: data.pickupAddress
+
+        val rawDrop =
+            dropFromId
+                ?: data.dropAddress
+
+        val finalPickup =
+            if (
+                rawPickup.isNullOrBlank() ||
+                matchesBlocklist(rawPickup) ||
+                isInvalidAddress(rawPickup)
+            ) {
+                "Address unavailable"
+            } else {
+                rawPickup
+            }
+
+        val finalDrop =
+            if (
+                rawDrop.isNullOrBlank() ||
+                matchesBlocklist(rawDrop) ||
+                isInvalidAddress(rawDrop)
+            ) {
+                "Address unavailable"
+            } else {
+                rawDrop
+            }
+
+        return data.copy(
+            pickupAddress =
+                finalPickup,
+            dropAddress =
+                finalDrop,
+            bookingId =
+                bookingId
+        )
+    }
+
+
+    // RAPIDO_NORMAL_SINGLE_PASS_V1
+    fun validateRapidoOrderPopup(
+        root: AccessibilityNodeInfo?
+    ): RapidoPopupValidation {
+        if (root == null) {
             return RapidoPopupValidation(
                 isValid = false,
-                failureReason = "Home screen detected ('Today's Earnings' / 'ON DUTY' / 'Blue Performance')"
+                failureReason = "Null root node"
             )
         }
 
-        // RAPIDO_TURBO_DROP_ONLY_V4
-        // Parse only once. Pickup street/address is intentionally skipped.
-        val orderData =
-            extractOrderData(
-                root = root,
-                skipHomeCheck = true,
-                skipPickupAddress = true
+        val pkg =
+            root.packageName
+                ?.toString()
+                .orEmpty()
+
+        if (isSmartDrivoPackage(pkg)) {
+            return RapidoPopupValidation(
+                isValid = false,
+                failureReason = "SmartDrivo UI package"
+            )
+        }
+
+        // One tree traversal for normal Rapido:
+        // home text + ride text/view IDs + Accept target.
+        val singlePass =
+            scanRapidoNormalOfferSinglePass(
+                root
             )
 
-        // Requirement 1a: Fare amount outside earnings container
+        if (
+            isRapidoHomeScreenTexts(
+                singlePass.homeTexts
+            )
+        ) {
+            return RapidoPopupValidation(
+                isValid = false,
+                failureReason =
+                    "Home screen detected ('Today's Earnings' / 'ON DUTY' / 'Blue Performance')"
+            )
+        }
+
+        // Same fare/distance/drop parsing rules as before, but reuse entries
+        // already collected by the single accessibility traversal.
+        val orderData =
+            extractOrderDataFromSinglePassEntries(
+                entries =
+                    singlePass.entries,
+                skipPickupAddress =
+                    true
+            )
+
         if (orderData.totalFare <= 0f) {
             return RapidoPopupValidation(
                 isValid = false,
-                failureReason = "Missing valid fare amount outside earnings container",
-                orderData = orderData
+                failureReason =
+                    "Missing valid fare amount outside earnings container",
+                orderData =
+                    orderData
             )
         }
 
-        // Requirement 1b: A pickup distance in km OR "Nearby"
-        // Reuse the parsed snapshot instead of scanning the tree again.
         val hasNearby =
             orderData.hasNearby
 
@@ -1373,50 +2374,87 @@ object RapidoAdapter {
             orderData.pickupKm != null &&
                 orderData.pickupKm > 0f
 
-        if (!hasPickupKm && !hasNearby) {
+        if (
+            !hasPickupKm &&
+            !hasNearby
+        ) {
             return RapidoPopupValidation(
                 isValid = false,
-                fare = orderData.totalFare,
-                failureReason = "Missing pickup distance in km or 'Nearby'",
-                orderData = orderData
+                fare =
+                    orderData.totalFare,
+                failureReason =
+                    "Missing pickup distance in km or 'Nearby'",
+                orderData =
+                    orderData
             )
         }
 
-        // Requirement 1c: An "Accept" or "ACCEPT" button visible on screen
-        val acceptBtn = findAcceptButton(root)
+        // Common path uses the Accept target captured by the same traversal.
+        // Keep the old multi-method finder as a defensive compatibility fallback.
+        val acceptBtn =
+            singlePass.acceptButton
+                ?: findAcceptButton(
+                    root
+                )
+
         if (acceptBtn == null) {
             return RapidoPopupValidation(
                 isValid = false,
-                fare = orderData.totalFare,
-                pickupDistKm = orderData.pickupKm,
-                hasNearby = hasNearby,
-                failureReason = "Missing 'Accept' or 'ACCEPT' button",
-                orderData = orderData
+                fare =
+                    orderData.totalFare,
+                pickupDistKm =
+                    orderData.pickupKm,
+                hasNearby =
+                    hasNearby,
+                failureReason =
+                    "Missing 'Accept' or 'ACCEPT' button",
+                orderData =
+                    orderData
             )
         }
 
-        val bounds = Rect()
-        acceptBtn.node.getBoundsInScreen(bounds)
-        if (bounds.width() <= 0 || bounds.height() <= 0) {
+        val bounds =
+            Rect()
+
+        acceptBtn.node
+            .getBoundsInScreen(
+                bounds
+            )
+
+        if (
+            bounds.width() <= 0 ||
+            bounds.height() <= 0
+        ) {
             return RapidoPopupValidation(
                 isValid = false,
-                fare = orderData.totalFare,
-                pickupDistKm = orderData.pickupKm,
-                hasNearby = hasNearby,
-                failureReason = "Accept button is not visible on screen (zero dimensions)",
-                orderData = orderData
+                fare =
+                    orderData.totalFare,
+                pickupDistKm =
+                    orderData.pickupKm,
+                hasNearby =
+                    hasNearby,
+                failureReason =
+                    "Accept button is not visible on screen (zero dimensions)",
+                orderData =
+                    orderData
             )
         }
 
         return RapidoPopupValidation(
             isValid = true,
-            fare = orderData.totalFare,
-            pickupDistKm = orderData.pickupKm,
-            hasNearby = hasNearby,
-            acceptButton = acceptBtn,
-            orderData = orderData
+            fare =
+                orderData.totalFare,
+            pickupDistKm =
+                orderData.pickupKm,
+            hasNearby =
+                hasNearby,
+            acceptButton =
+                acceptBtn,
+            orderData =
+                orderData
         )
     }
+
 
     /**
      * Text-based validation helper for testing.

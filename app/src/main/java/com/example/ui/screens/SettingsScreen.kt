@@ -742,11 +742,12 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text =
-                        "Final rule: Home Filter OR Order Filter 2 OR Order Filter 3 OR + Amount Filter = eligible order.",
-                    fontSize = 11.sp,
+                    text = "Accept if Home Filter, Filter 2, Filter 3 or +Amount matches.",
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = BluePrimary
+                    color = BluePrimary,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
             // 3. BUNDLE ORDER

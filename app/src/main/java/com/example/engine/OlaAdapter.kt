@@ -884,10 +884,11 @@ object OlaAdapter {
                     old.timestamp <=
                     OLA_CACHE_WINDOW_MS
 
+            // Reuse cache only for positively identified same booking.
             val sameOrder =
-                old.bookingId.isNullOrBlank() ||
-                    bookingId.isNullOrBlank() ||
-                    old.bookingId == bookingId
+                !old.bookingId.isNullOrBlank() &&
+                !bookingId.isNullOrBlank() &&
+                old.bookingId == bookingId
 
             if (
                 cacheFresh &&
@@ -949,9 +950,7 @@ object OlaAdapter {
                             pickupAddress,
                         dropAddress =
                             dropAddress,
-                        bookingId =
-                            bookingId
-                                ?: old.bookingId,
+                        bookingId = bookingId,
                         timestamp =
                             detectedAt
                     )

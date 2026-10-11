@@ -2,6 +2,7 @@ package com.example.data
 
 import android.content.Context
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import com.example.model.AreaGroup
 import com.example.model.AreaType
@@ -21,6 +22,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.security.MessageDigest
 import java.util.UUID
 
 class FirebaseRepository(
@@ -33,6 +35,104 @@ class FirebaseRepository(
     private var auth: FirebaseAuth? = null
     private var ownUserListener: ListenerRegistration? = null
     private var ownPaymentsListener: ListenerRegistration? = null
+
+    // BLOCKED_USER_DEVICE_BLACKLIST_V1
+
+
+    // OFFLINE_GRACE_LOCK_V1
+    // The offline lease refreshes only after BOTH the user entitlement and
+    // current-device blacklist checks have succeeded.
+    private var ownSecurityUserVerified = false
+
+
+    // LOGIN_SESSION_LOCK_V1
+    @Volatile
+    private var loginSessionClaimInProgress =
+        false
+
+    private fun maybeMarkOwnSecurityVerified(
+        uid: String
+    ) {
+        if (
+            ownSecurityUserVerified
+        ) {
+            prefs.markSecurityVerifiedNow(
+                uid
+            )
+        }
+    }
+
+    // LOGIN_SESSION_LOCK_V1
+    // Claims the current Firebase-authenticated account session.
+    // This runs only during login/startup migration, never in a ride event.
+    private fun claimOwnLoginSession(
+        uid: String
+    ) {
+        val fs =
+            firestore
+                ?: return
+
+        if (
+            uid.isBlank() ||
+            loginSessionClaimInProgress
+        ) {
+            return
+        }
+
+        val sessionId =
+            prefs
+                .getOrCreateLoginSessionIdForClaim()
+
+        loginSessionClaimInProgress =
+            true
+
+        scope.launch {
+            try {
+                fs.collection("users")
+                    .document(uid)
+                    .set(
+                        mapOf(
+                            "activeSessionId" to
+                                sessionId,
+                            "activeSessionDevice" to
+                                currentDeviceName(),
+                            "activeSessionStartedAt" to
+                                System.currentTimeMillis(),
+                            "activeSessionAppVersion" to
+                                currentAppVersionName()
+                        ),
+                        SetOptions.merge()
+                    )
+                    .await()
+
+                prefs.markLoginSessionActive(
+                    sessionId
+                )
+
+                Log.i(
+                    "FirebaseRepo",
+                    "LOGIN SESSION V1: current session claimed"
+                )
+            } catch (e: Exception) {
+                Log.w(
+                    "FirebaseRepo",
+                    "LOGIN SESSION V1 claim failed: ${e.message}"
+                )
+
+                prefs.invalidateLoginSession(
+                    "SmartDrivo could not verify this login session. Check internet and log in again."
+                )
+
+                prefs.setAutoAcceptActive(
+                    false
+                )
+            } finally {
+                loginSessionClaimInProgress =
+                    false
+            }
+        }
+    }
+
     private var adminUsersListener: ListenerRegistration? = null
     private var adminPaymentsListener: ListenerRegistration? = null
 
@@ -85,6 +185,59 @@ class FirebaseRepository(
             "Unknown"
         }
 
+    // TRIAL_ABUSE_PROTECTION_V4
+    // Raw ANDROID_ID is never uploaded or stored.
+    // Only a one-way SHA-256 token is used for one-trial-per-device control.
+    // BLOCKED_USER_DEVICE_BLACKLIST_V1
+    // Device blacklist reuses the same privacy-safe one-way device token.
+    // Raw ANDROID_ID is never stored or uploaded.
+    private fun currentSecurityDeviceKey(): String =
+        currentTrialDeviceKey()
+
+    private fun currentTrialDeviceKey(): String {
+        val androidId =
+            try {
+                Settings.Secure.getString(
+                    context.contentResolver,
+                    Settings.Secure.ANDROID_ID
+                )
+                    ?.trim()
+                    .orEmpty()
+            } catch (_: Exception) {
+                ""
+            }
+
+        val stableSource =
+            androidId.ifBlank {
+                buildString {
+                    append(Build.MANUFACTURER)
+                    append("|")
+                    append(Build.MODEL)
+                    append("|")
+                    append(Build.DEVICE)
+                    append("|")
+                    append(Build.PRODUCT)
+                }
+            }
+
+        val raw =
+            "SMARTDRIVO_TRIAL_DEVICE_V4|" +
+                context.packageName +
+                "|" +
+                stableSource
+
+        return MessageDigest
+            .getInstance("SHA-256")
+            .digest(
+                raw.toByteArray(
+                    Charsets.UTF_8
+                )
+            )
+            .joinToString("") {
+                "%02x".format(it)
+            }
+    }
+
     private fun userFromDocument(doc: DocumentSnapshot): UserProfile {
         val vehicle = try {
             com.example.model.VehicleType.valueOf(
@@ -93,6 +246,10 @@ class FirebaseRepository(
         } catch (_: Exception) {
             com.example.model.VehicleType.AUTO
         }
+
+        val isAdmin = doc.getBoolean("isAdmin") ?: false
+        val boundInstallId = doc.getString("boundInstallId").orEmpty()
+        val deviceAuthorized = true // Device-lock feature removed
 
         return UserProfile(
             uid = doc.id,
@@ -109,8 +266,19 @@ class FirebaseRepository(
             planPrice = doc.getLong("planPrice")?.toInt() ?: 0,
             planExpireMillis = doc.getLong("planExpireMillis") ?: 0L,
             isApproved = doc.getBoolean("isApproved") ?: false,
-            isAdmin = doc.getBoolean("isAdmin") ?: false,
+            isAdmin = isAdmin,
             isActive = doc.getBoolean("isActive") ?: true,
+            isBlocked =
+                doc.getBoolean("isBlocked") ?: false,
+            blockReason =
+                doc.getString("blockReason").orEmpty(),
+            boundInstallId = boundInstallId,
+            boundDeviceName =
+                doc.getString("boundDevice")
+                    ?: doc.getString("registeredDevice")
+                    ?: "",
+            isDeviceAuthorized = deviceAuthorized,
+            deviceChangeRequested = false,
             referralCode = doc.getString("referralCode") ?: "",
             createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
         )
@@ -146,6 +314,9 @@ class FirebaseRepository(
         ownUserListener?.remove()
         ownPaymentsListener?.remove()
 
+        // OFFLINE_GRACE_LOCK_V1
+        ownSecurityUserVerified = false
+
         ownUserListener = fs.collection("users").document(uid)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
@@ -167,6 +338,64 @@ class FirebaseRepository(
                     )
 
                     prefs.saveUserProfile(merged)
+
+                    // LOGIN_SESSION_LOCK_V1
+                    // Admin is exempt. Drivers keep one authoritative session.
+                    if (remote.isAdmin) {
+                        prefs.clearLoginSessionForAdmin()
+                    } else {
+                        val remoteSessionId =
+                            snapshot.getString(
+                                "activeSessionId"
+                            ).orEmpty()
+
+                        val localSessionId =
+                            prefs.currentLoginSessionId
+
+                        if (
+                            !loginSessionClaimInProgress &&
+                            localSessionId.isNotBlank() &&
+                            remoteSessionId.isNotBlank() &&
+                            remoteSessionId !=
+                                localSessionId
+                        ) {
+                            prefs.invalidateLoginSession(
+                                "This SmartDrivo account was signed in on another device."
+                            )
+
+                            prefs.setAutoAcceptActive(
+                                false
+                            )
+
+                            Log.w(
+                                "FirebaseRepo",
+                                "LOGIN SESSION V1: old session invalidated"
+                            )
+                        } else if (
+                            !loginSessionClaimInProgress &&
+                            localSessionId.isBlank() &&
+                            remote.isActive &&
+                            !remote.isBlocked &&
+                            !snapshot.metadata.isFromCache
+                        ) {
+                            // Claim a login session only after device authorization.
+                            // Never replace another session from a pending device.
+                            claimOwnLoginSession(
+                                uid
+                            )
+                        }
+                    }
+
+                    // OFFLINE_GRACE_LOCK_V3
+                    // Only a server-backed snapshot can renew the lease.
+                    if (
+                        !snapshot.metadata.isFromCache
+                    ) {
+                        ownSecurityUserVerified = true
+                        maybeMarkOwnSecurityVerified(
+                            uid
+                        )
+                    }
 
                     if (!merged.isPlanValid && !merged.isAdmin) {
                         prefs.setAutoAcceptActive(false)
@@ -247,8 +476,6 @@ class FirebaseRepository(
         profile: UserProfile,
         onComplete: ((Boolean) -> Unit)? = null
     ) {
-        prefs.saveUserProfile(profile)
-
         scope.launch {
             try {
                 val fs = firestore
@@ -258,15 +485,26 @@ class FirebaseRepository(
                     return@launch
                 }
 
+                // AUTH_UID_CANONICAL_USER_DOC_V1
+                // Signed-in Firebase UID is the only canonical /users document id.
+                // This prevents an old/local UUID from creating another row.
+                val authenticatedUid =
+                    auth?.currentUser?.uid.orEmpty()
+
                 val uid =
-                    profile.uid.ifBlank {
-                        auth?.currentUser?.uid.orEmpty()
+                    authenticatedUid.ifBlank {
+                        profile.uid
                     }
 
                 if (uid.isBlank()) {
                     onComplete?.invoke(false)
                     return@launch
                 }
+
+                prefs.saveUserProfile(
+                    if (profile.uid == uid) profile
+                    else profile.copy(uid = uid)
+                )
 
                 val now =
                     System.currentTimeMillis()
@@ -300,54 +538,184 @@ class FirebaseRepository(
                         "lastDevice" to currentDevice,
                         "lastAndroidVersion" to currentAndroid,
                         "lastAppVersion" to currentAppVersion,
-                        "lastSeenAt" to now
+                        "lastSeenAt" to now,
+
+                        // BLOCKED_USER_DEVICE_BLACKLIST_V1
+                        // Public hash token only; raw Android ID is never stored.
+                        "securityDeviceKey" to
+                            currentSecurityDeviceKey()
                     )
 
                 if (!existing.exists()) {
 
-                    // FREE_TRIAL_FIRESTORE_V3
-                    // A brand-new registered account gets one
-                    // and only one 24-hour full-access trial.
-                    val trialEnd =
-                        now +
-                            (24L * 60L * 60L * 1000L)
+                    // TRIAL_ABUSE_PROTECTION_V4
+                    // One free trial per privacy-safe stable device token.
+                    // User doc + trial-device reservation are atomic.
+                    val trialDeviceKey =
+                        currentTrialDeviceKey()
 
-                    val trialProfile =
-                        profile.copy(
-                            uid = uid,
-                            plan = "FREE_TRIAL",
-                            planPrice = 0,
-                            planExpireMillis = trialEnd,
-                            isApproved = false,
-                            isAdmin = false,
-                            isActive = true,
-                            createdAt = now
+                    val trialDeviceRef =
+                        fs.collection(
+                            "trialDevices"
+                        ).document(
+                            trialDeviceKey
                         )
 
-                    prefs.saveUserProfile(
-                        trialProfile
-                    )
-
-                    docRef.set(
-                        safeClientMap +
-                            mapOf(
-                                "plan" to "FREE_TRIAL",
-                                "planPrice" to 0,
-                                "planExpireMillis" to
-                                    trialEnd,
-                                "isApproved" to false,
-                                "isAdmin" to false,
-                                "isActive" to true,
-                                "createdAt" to now,
-                                "freeTrialStartedAt" to now,
-                                "freeTrialUsed" to true,
-                                "registeredDevice" to currentDevice,
-                                "registeredAndroidVersion" to currentAndroid,
-                                "registeredAppVersion" to currentAppVersion,
-                                "registeredDeviceAt" to now,
-                                "registeredDeviceSource" to "REGISTRATION"
+                    val trialEnd =
+                        now +
+                            (
+                                24L *
+                                    60L *
+                                    60L *
+                                    1000L
                             )
-                    ).await()
+
+                    fs.runTransaction { tx ->
+                        val userSnapshot =
+                            tx.get(docRef)
+
+                        if (userSnapshot.exists()) {
+                            return@runTransaction
+                        }
+
+                        val trialDeviceSnapshot =
+                            tx.get(
+                                trialDeviceRef
+                            )
+
+                        val grantTrial =
+                            !trialDeviceSnapshot
+                                .exists()
+
+                        val plan =
+                            if (grantTrial)
+                                "FREE_TRIAL"
+                            else
+                                "NONE"
+
+                        val expiry =
+                            if (grantTrial)
+                                trialEnd
+                            else
+                                0L
+
+                        tx.set(
+                            docRef,
+                            safeClientMap +
+                                mapOf(
+                                    "plan" to plan,
+                                    "planPrice" to 0,
+                                    "planExpireMillis" to
+                                        expiry,
+                                    "isApproved" to false,
+                                    "isAdmin" to false,
+                                    "isActive" to true,
+                                    "createdAt" to now,
+                                    "freeTrialStartedAt" to
+                                        if (grantTrial)
+                                            now
+                                        else
+                                            0L,
+                                    "freeTrialUsed" to true,
+                                    "trialDeviceKey" to
+                                        trialDeviceKey,
+                                    "trialDeniedReason" to
+                                        if (grantTrial)
+                                            ""
+                                        else
+                                            "DEVICE_TRIAL_ALREADY_USED",
+                                    "registeredDevice" to
+                                        currentDevice,
+                                    "registeredAndroidVersion" to
+                                        currentAndroid,
+                                    "registeredAppVersion" to
+                                        currentAppVersion,
+                                    "registeredDeviceAt" to now,
+                                    "registeredDeviceSource" to
+                                        "REGISTRATION",
+
+                                )
+                        )
+
+                        if (grantTrial) {
+                            tx.set(
+                                trialDeviceRef,
+                                mapOf(
+                                    "deviceTrialKey" to
+                                        trialDeviceKey,
+                                    "firstUid" to
+                                        uid,
+                                    "createdAt" to
+                                        now,
+                                    "trialExpireMillis" to
+                                        trialEnd,
+                                    "registeredDevice" to
+                                        currentDevice,
+                                    "source" to
+                                        "ANDROID_ID_SHA256_V4"
+                                )
+                            )
+                        }
+                    }.await()
+
+                    // Read the committed user document to know whether this
+                    // device received FREE_TRIAL or was blocked with NONE.
+                    // This happens only during registration, never on ride events.
+                    val createdProfile =
+                        docRef.get().await()
+
+                    val assignedPlan =
+                        createdProfile.getString(
+                            "plan"
+                        ) ?: "NONE"
+
+                    if (assignedPlan == "FREE_TRIAL") {
+                        val assignedExpiry =
+                            createdProfile.getLong(
+                                "planExpireMillis"
+                            ) ?: trialEnd
+
+                        prefs.saveUserProfile(
+                            profile.copy(
+                                uid = uid,
+                                plan = "FREE_TRIAL",
+                                planPrice = 0,
+                                planExpireMillis =
+                                    assignedExpiry,
+                                isApproved = false,
+                                isAdmin = false,
+                                isActive = true,
+                                createdAt = now
+                            )
+                        )
+
+                        Log.i(
+                            "FirebaseRepo",
+                            "TRIAL ABUSE V4: one-day trial granted"
+                        )
+                    } else {
+                        prefs.saveUserProfile(
+                            profile.copy(
+                                uid = uid,
+                                plan = "NONE",
+                                planPrice = 0,
+                                planExpireMillis = 0L,
+                                isApproved = false,
+                                isAdmin = false,
+                                isActive = true,
+                                createdAt = now
+                            )
+                        )
+
+                        prefs.setAutoAcceptActive(
+                            false
+                        )
+
+                        Log.i(
+                            "FirebaseRepo",
+                            "TRIAL ABUSE V4: same-device repeat trial blocked"
+                        )
+                    }
 
                 } else {
 
@@ -369,8 +737,76 @@ class FirebaseRepository(
                             emptyMap<String, Any>()
                         }
 
+                    // TRIAL_ABUSE_PROTECTION_V4
+                    // Backfill older accounts that already consumed a trial.
+                    // This makes protection effective for existing users after
+                    // their first launch/login on the updated app.
+                    val historicalTrialUsed =
+                        existing.getBoolean(
+                            "freeTrialUsed"
+                        ) == true ||
+                            existing.getString(
+                                "plan"
+                            ) == "FREE_TRIAL"
+
+                    if (historicalTrialUsed) {
+                        val key =
+                            currentTrialDeviceKey()
+
+                        val ref =
+                            fs.collection(
+                                "trialDevices"
+                            ).document(
+                                key
+                            )
+
+                        try {
+                            fs.runTransaction { tx ->
+                                val reserved =
+                                    tx.get(ref)
+
+                                if (!reserved.exists()) {
+                                    val startedAt =
+                                        existing.getLong(
+                                            "freeTrialStartedAt"
+                                        ) ?: now
+
+                                    tx.set(
+                                        ref,
+                                        mapOf(
+                                            "deviceTrialKey" to
+                                                key,
+                                            "firstUid" to
+                                                uid,
+                                            "createdAt" to
+                                                now,
+                                            "trialExpireMillis" to
+                                                (
+                                                    startedAt +
+                                                        24L *
+                                                        60L *
+                                                        60L *
+                                                        1000L
+                                                    ),
+                                            "registeredDevice" to
+                                                currentDevice,
+                                            "source" to
+                                                "HISTORICAL_BACKFILL_V4"
+                                        )
+                                    )
+                                }
+                            }.await()
+                        } catch (e: Exception) {
+                            Log.w(
+                                "FirebaseRepo",
+                                "Trial-device backfill skipped: ${e.message}"
+                            )
+                        }
+                    }
+
                     docRef.set(
-                        safeClientMap + registrationDevicePatch,
+                        safeClientMap +
+                            registrationDevicePatch,
                         SetOptions.merge()
                     ).await()
                 }
@@ -412,6 +848,8 @@ class FirebaseRepository(
                         "isApproved" to profile.isApproved,
                         "isAdmin" to profile.isAdmin,
                         "isActive" to profile.isActive,
+                        "isBlocked" to profile.isBlocked,
+                        "blockReason" to profile.blockReason,
                         "updatedAt" to System.currentTimeMillis()
                     ),
                     SetOptions.merge()
@@ -449,6 +887,24 @@ class FirebaseRepository(
                 val isApproved = doc.getBoolean("isApproved") ?: false
                 val isAdmin = doc.getBoolean("isAdmin") ?: false
                 val isActive = doc.getBoolean("isActive") ?: true
+
+                // BLOCKED_USER_DEVICE_BLACKLIST_V1
+                val isBlocked =
+                    doc.getBoolean("isBlocked") ?: false
+                val blockReason =
+                    doc.getString("blockReason").orEmpty()
+
+                // OFFLINE_GRACE_LOCK_V3
+                // DocumentReference.get() may fall back to Firestore cache
+                // while offline. Cache reads must not extend the grace lease.
+                if (
+                    !doc.metadata.isFromCache
+                ) {
+                    prefs.markSecurityVerifiedNow(
+                        doc.id.ifEmpty { uid }
+                    )
+                }
+
                 val referralCode = doc.getString("referralCode") ?: ""
                 val createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
                 val vehicleTypeStr = doc.getString("vehicleType") ?: "AUTO"
@@ -471,6 +927,17 @@ class FirebaseRepository(
                     isApproved = isApproved,
                     isAdmin = isAdmin,
                     isActive = isActive,
+                    isBlocked = isBlocked,
+                    blockReason = blockReason,
+                    isDeviceBlacklisted = false,
+                    deviceBlacklistReason = "",
+                    boundInstallId = doc.getString("boundInstallId").orEmpty(),
+                    boundDeviceName =
+                        doc.getString("boundDevice")
+                            ?: doc.getString("registeredDevice")
+                            ?: "",
+                    isDeviceAuthorized = true,
+                    deviceChangeRequested = false,
                     referralCode = referralCode,
                     createdAt = createdAt
                 )
@@ -1040,6 +1507,49 @@ class FirebaseRepository(
                         ?.let {
                             prefs.updateQrImageUrl(it)
                         }
+
+
+                    // MINIMUM_VERSION_LOCK_V1
+                    // Read once through the existing live global-settings listener
+                    // and cache locally. No Firestore/network work is added to the
+                    // Rapido/Ola/Uber real-order path.
+                    val minimumVersionRaw =
+                        doc.get(
+                            "minimumAppVersionCode"
+                        )
+
+                    val minimumVersionCode =
+                        when (
+                            minimumVersionRaw
+                        ) {
+                            is Number ->
+                                minimumVersionRaw.toInt()
+
+                            is String ->
+                                minimumVersionRaw
+                                    .toIntOrNull()
+                                    ?: 0
+
+                            else ->
+                                0
+                        }
+
+                    prefs.updateMinimumVersionPolicy(
+                        enabled =
+                            doc.getBoolean(
+                                "forceUpdateEnabled"
+                            ) ?: false,
+                        minimumVersionCode =
+                            minimumVersionCode,
+                        minimumVersionName =
+                            doc.getString(
+                                "minimumAppVersionName"
+                            ) ?: "",
+                        updateUrl =
+                            doc.getString(
+                                "forceUpdateUrl"
+                            ) ?: ""
+                    )
 
                     val wa =
                         doc.getString("whatsapp")

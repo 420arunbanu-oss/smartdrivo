@@ -465,6 +465,54 @@
       <button class="btn" style="margin-top: 14px;" id="savePricesBtn" onclick="savePlanPrices()">
         <i class="fa-solid fa-floppy-disk"></i> Save Plan Prices
       </button>
+
+      <!-- MINIMUM_VERSION_LOCK_ADMIN_V1 -->
+      <h2 class="panel-title" style="margin-top: 32px;">
+        <i class="fa-solid fa-cloud-arrow-up" style="color: var(--accent);"></i>
+        Minimum Version / Force Update
+      </h2>
+      <p class="panel-desc">
+        Block old SmartDrivo APK versions without adding any network check to the live order path.
+        Current production APK: v1.0.5 (versionCode 6).
+      </p>
+
+      <div class="card" style="margin-top: 14px;">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:14px;">
+          <div class="form-group" style="margin:0;">
+            <label>Minimum Version Code</label>
+            <input type="number" id="minimumAppVersionCodeInput" min="1" value="6">
+          </div>
+
+          <div class="form-group" style="margin:0;">
+            <label>Required Version Name</label>
+            <input type="text" id="minimumAppVersionNameInput" value="1.0.5" placeholder="e.g. 1.0.6">
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top:14px;">
+          <label>Update APK / Telegram URL</label>
+          <input type="text" id="forceUpdateUrlInput" placeholder="https://t.me/...">
+        </div>
+
+        <label style="display:flex; align-items:center; gap:10px; margin-top:10px; cursor:pointer;">
+          <input type="checkbox" id="forceUpdateEnabledInput" style="width:auto;">
+          <span>
+            <strong>Enable Force Update</strong>
+            <span style="display:block; color:var(--text-dim); font-size:11px; margin-top:2px;">
+              If ON, users with versionCode below the minimum are locked on the Update SmartDrivo screen.
+            </span>
+          </span>
+        </label>
+
+        <div style="margin-top:12px; padding:10px 12px; border-radius:8px; background:rgba(245,158,11,0.08); color:#FBBF24; font-size:11px;">
+          Safe test: set Minimum Version Code to <strong>7</strong> while current APK is versionCode 6.
+          The test phone should show Update SmartDrivo. Set it back to 6 or switch Force Update OFF to unlock.
+        </div>
+
+        <button class="btn" style="margin-top:14px;" id="saveMinimumVersionBtn" onclick="saveMinimumVersionPolicy()">
+          <i class="fa-solid fa-floppy-disk"></i> Save Minimum Version
+        </button>
+      </div>
     </div>
 
     <!-- 4. Channel & Support Links Panel -->
@@ -545,6 +593,11 @@
     let currentAdminEmail = sessionStorage.getItem('smartdrivo_admin_email') || '';
     let liveDrivers = [];
     let livePayments = [];
+
+    // SECURITY_STATUS_ADMIN_V1
+    // Live permanent device-block metadata, keyed by privacy-safe device hash.
+    let liveBlockedDevices = new Map();
+
     let activePaymentFilter = 'PENDING'; // 'PENDING' or 'ALL'
 
     // Tab Navigation
@@ -618,6 +671,97 @@
       } catch (e) {
         return 'N/A';
       }
+    }
+
+    // SECURITY_STATUS_ADMIN_V1
+    function formatRelativeLastSeen(ts) {
+      const value = Number(ts) || 0;
+      if (!value) return 'Not reported yet';
+
+      const age = Math.max(0, Date.now() - value);
+      const minute = 60 * 1000;
+      const hour = 60 * minute;
+      const day = 24 * hour;
+
+      if (age < minute) return 'Just now';
+      if (age < hour) return `${Math.floor(age / minute)} min ago`;
+      if (age < day) return `${Math.floor(age / hour)} hr ago`;
+      if (age < 7 * day) return `${Math.floor(age / day)} day ago`;
+
+      return formatTime(value);
+    }
+
+    function applyBlockedDeviceSecurityState(driver) {
+      const key =
+        driver.securityDeviceKey ||
+        driver.trialDeviceKey ||
+        '';
+
+      const blocked =
+        key
+          ? liveBlockedDevices.get(key)
+          : null;
+
+      return {
+        ...driver,
+        deviceBlacklisted: !!blocked,
+        deviceBlacklistReason:
+          blocked && blocked.reason
+            ? blocked.reason
+            : ''
+      };
+    }
+
+    function getDriverSecurityStatus(driver) {
+      if (driver.isAdmin) {
+        return {
+          label: 'Protected Admin',
+          icon: 'fa-shield-halved',
+          color: '#60A5FA',
+          background: 'rgba(37,99,235,.18)',
+          reason: 'Administrator security bypass'
+        };
+      }
+
+      if (driver.isBlocked) {
+        return {
+          label: 'Account Blocked',
+          icon: 'fa-user-slash',
+          color: '#FCA5A5',
+          background: 'rgba(220,38,38,.18)',
+          reason:
+            driver.blockReason ||
+            'Blocked by SmartDrivo Admin'
+        };
+      }
+
+      if (!driver.isActive) {
+        return {
+          label: 'App Locked',
+          icon: 'fa-lock',
+          color: '#FBBF24',
+          background: 'rgba(245,158,11,.16)',
+          reason: 'Remote app lock is active'
+        };
+      }
+
+      if (driver.activeSessionId) {
+        return {
+          label: 'Secure Session Active',
+          icon: 'fa-circle-check',
+          color: '#34D399',
+          background: 'rgba(16,185,129,.15)',
+          reason: 'Account and session currently allowed'
+        };
+      }
+
+      return {
+        label: 'Active',
+        icon: 'fa-circle-check',
+        color: '#34D399',
+        background: 'rgba(16,185,129,.15)',
+        reason: 'No security lock reported'
+      };
     }
 
     function formatExpiry(expiryMillis, isAdmin) {
@@ -721,14 +865,143 @@
     });
 
     // 2. REALTIME LISTENERS
+    // DRIVER_IDENTITY_DEDUPE_V1
+    // Keep legacy Firestore docs intact, but show one row per real driver identity.
+    function normalizeDriverEmail(v) {
+      return String(v || '').trim().toLowerCase();
+    }
+
+    function normalizeDriverPhone(v) {
+      const digits = String(v || '').replace(/\D/g, '');
+      return digits.length > 10 ? digits.slice(-10) : digits;
+    }
+
+    function driverIdentityKey(d) {
+      const email = normalizeDriverEmail(d.email);
+      if (email) return `email:${email}`;
+
+      const phone = normalizeDriverPhone(d.phone);
+      if (phone) return `phone:${phone}`;
+
+      return `uid:${d.uid}`;
+    }
+
+    function collapseDuplicateDrivers(rows) {
+      const groups = new Map();
+
+      rows.forEach(d => {
+        const key = driverIdentityKey(d);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(d);
+      });
+
+      return Array.from(groups.values()).map(group => {
+        const sorted = [...group].sort((a,b) => {
+          if (a.uid === currentAdminUid && b.uid !== currentAdminUid) return -1;
+          if (b.uid === currentAdminUid && a.uid !== currentAdminUid) return 1;
+          if (a.isAdmin && !b.isAdmin) return -1;
+          if (b.isAdmin && !a.isAdmin) return 1;
+
+          const aSeen = Math.max(Number(a.lastSeenAt)||0, Number(a.createdAt)||0);
+          const bSeen = Math.max(Number(b.lastSeenAt)||0, Number(b.createdAt)||0);
+          return bSeen - aSeen;
+        });
+
+        const canonical = {...sorted[0]};
+        canonical.sourceUids = group.map(x => x.uid);
+        canonical.duplicateCount = group.length;
+
+        canonical.isAdmin =
+          group.some(x => x.isAdmin === true) ||
+          group.some(x => x.uid === currentAdminUid);
+
+        const newest = sorted[0];
+        canonical.registeredDevice =
+          newest.registeredDevice || newest.lastDevice || canonical.registeredDevice;
+        canonical.registeredAndroidVersion =
+          newest.registeredAndroidVersion || canonical.registeredAndroidVersion;
+        canonical.registeredAppVersion =
+          newest.registeredAppVersion || canonical.registeredAppVersion;
+
+        // DEVICE_LOCK_ADMIN_V1
+        const boundSource =
+          group.find(x => x.boundInstallId) || canonical;
+
+        const requestSource =
+          group.find(
+            x =>
+              x.deviceChangeRequested === true &&
+              x.requestedDeviceId
+          ) || canonical;
+
+        canonical.boundInstallId =
+          boundSource.boundInstallId || '';
+
+        canonical.boundDevice =
+          boundSource.boundDevice ||
+          boundSource.registeredDevice ||
+          '';
+
+        canonical.deviceChangeRequested =
+          group.some(x => x.deviceChangeRequested === true);
+
+        canonical.requestedDeviceId =
+          requestSource.requestedDeviceId || '';
+
+        canonical.requestedDeviceName =
+          requestSource.requestedDeviceName || '';
+
+        canonical.requestedDeviceAt =
+          Number(requestSource.requestedDeviceAt) || 0;
+
+        // BLOCKED_USER_DEVICE_BLACKLIST_V1
+        canonical.isBlocked =
+          group.some(x => x.isBlocked === true);
+
+        canonical.blockReason =
+          (
+            group.find(x => x.isBlocked === true)?.blockReason ||
+            ''
+          );
+
+        canonical.securityDeviceKey =
+          (
+            group.find(x => x.securityDeviceKey)?.securityDeviceKey ||
+            group.find(x => x.trialDeviceKey)?.trialDeviceKey ||
+            ''
+          );
+
+        canonical.deviceBlacklisted =
+          group.some(x => x.deviceBlacklisted === true);
+
+        // SECURITY_STATUS_ADMIN_V1
+        const activeSessionSource =
+          sorted.find(x => x.activeSessionId) ||
+          canonical;
+
+        canonical.activeSessionId =
+          activeSessionSource.activeSessionId || '';
+
+        canonical.activeSessionDevice =
+          activeSessionSource.activeSessionDevice || '';
+
+        canonical.activeSessionStartedAt =
+          Number(activeSessionSource.activeSessionStartedAt) || 0;
+
+        canonical.activeSessionAppVersion =
+          activeSessionSource.activeSessionAppVersion || '';
+
+        return canonical;
+      });
+    }
     function startRealtimeListeners() {
       // A. Listen to /users collection
       db.collection('users').onSnapshot((snapshot) => {
         logMessage(`Live sync: ${snapshot.docs.length} driver documents received from Firestore /users.`);
-        liveDrivers = [];
+        const rawDrivers = [];
         snapshot.forEach((doc) => {
           const d = doc.data();
-          liveDrivers.push({
+          rawDrivers.push({
             uid: doc.id,
             name: d.name || 'Unnamed Driver',
             email: d.email || '',
@@ -741,15 +1014,57 @@
             registeredAppVersion: d.registeredAppVersion || d.lastAppVersion || '',
             lastDevice: d.lastDevice || d.registeredDevice || '',
             lastSeenAt: Number(d.lastSeenAt) || 0,
+
+            // SECURITY_STATUS_ADMIN_V1
+            activeSessionId: d.activeSessionId || '',
+            activeSessionDevice: d.activeSessionDevice || '',
+            activeSessionStartedAt:
+              Number(d.activeSessionStartedAt) || 0,
+            activeSessionAppVersion:
+              d.activeSessionAppVersion || '',
+
             plan: d.plan || 'NONE',
             planPrice: Number(d.planPrice) || 0,
             planExpireMillis: Number(d.planExpireMillis) || 0,
             isApproved: (d.isApproved === true),
-            isActive: (d.isActive !== false), // default active unless explicitly false
+            isActive: (d.isActive !== false), // false = remote app lock
             isAdmin: (d.isAdmin === true),
+
+            // BLOCKED_USER_DEVICE_BLACKLIST_V1
+            isBlocked: (d.isBlocked === true),
+            blockReason: d.blockReason || '',
+            securityDeviceKey:
+              d.securityDeviceKey ||
+              d.trialDeviceKey ||
+              '',
+            trialDeviceKey: d.trialDeviceKey || '',
+            deviceBlacklisted: false,
+
+            // DEVICE_LOCK_ADMIN_V1
+            boundInstallId: d.boundInstallId || '',
+            boundDevice: d.boundDevice || '',
+            deviceChangeRequested: (d.deviceChangeRequested === true),
+            requestedDeviceId: d.requestedDeviceId || '',
+            requestedDeviceName: d.requestedDeviceName || '',
+            requestedDeviceAt: Number(d.requestedDeviceAt) || 0,
+
             createdAt: Number(d.createdAt) || Date.now()
           });
         });
+
+        liveDrivers =
+          collapseDuplicateDrivers(rawDrivers)
+            .map(applyBlockedDeviceSecurityState);
+
+        const hiddenDuplicateCount =
+          Math.max(0, rawDrivers.length - liveDrivers.length);
+
+        if (hiddenDuplicateCount > 0) {
+          logMessage(
+            `Driver Directory: ${liveDrivers.length} unique drivers; ` +
+            `${hiddenDuplicateCount} legacy duplicate record(s) merged in view.`
+          );
+        }
 
         // Update counts
         const total = liveDrivers.length;
@@ -772,6 +1087,47 @@
         console.error("Firestore users listener error:", error);
         logMessage(`Firestore /users listener error: ${error.message}`);
         showToast("Error streaming drivers: " + error.message, "error");
+      });
+
+      // SECURITY_STATUS_ADMIN_V1
+      // Live permanent device blacklist status/reason for Security Status.
+      db.collection('blockedDevices').onSnapshot((snapshot) => {
+        const next = new Map();
+
+        snapshot.forEach((doc) => {
+          const d = doc.data() || {};
+
+          if (d.active !== false) {
+            next.set(
+              doc.id,
+              {
+                reason:
+                  d.reason ||
+                  'Device blacklisted by SmartDrivo Admin',
+                blockedAt:
+                  Number(d.blockedAt) || 0
+              }
+            );
+          }
+        });
+
+        liveBlockedDevices = next;
+
+        liveDrivers =
+          liveDrivers.map(
+            applyBlockedDeviceSecurityState
+          );
+
+        renderDriversTable();
+
+        logMessage(
+          `Security Status: ${next.size} active device blacklist record(s) loaded.`
+        );
+      }, (error) => {
+        console.warn(
+          "Blocked devices listener notice:",
+          error.message
+        );
       });
 
       // B. Listen to /payments collection
@@ -829,6 +1185,35 @@
             if (data.planPrices.plan1Month) document.getElementById('price1Month').value = data.planPrices.plan1Month;
           }
 
+
+          // MINIMUM_VERSION_LOCK_ADMIN_V1
+          const minimumCode =
+            Number(data.minimumAppVersionCode || 6);
+
+          document.getElementById(
+            'minimumAppVersionCodeInput'
+          ).value =
+            minimumCode > 0
+              ? minimumCode
+              : 6;
+
+          document.getElementById(
+            'minimumAppVersionNameInput'
+          ).value =
+            data.minimumAppVersionName ||
+            '1.0.5';
+
+          document.getElementById(
+            'forceUpdateUrlInput'
+          ).value =
+            data.forceUpdateUrl ||
+            '';
+
+          document.getElementById(
+            'forceUpdateEnabledInput'
+          ).checked =
+            data.forceUpdateEnabled === true;
+
           if (data.whatsapp) document.getElementById('whatsappInput').value = data.whatsapp;
           if (data.telegram) document.getElementById('telegramInput').value = data.telegram;
           if (data.instagram) document.getElementById('instagramInput').value = data.instagram;
@@ -857,8 +1242,34 @@
         const city = (d.city || '').toLowerCase();
         const state = (d.state || '').toLowerCase();
         const vehicle = (d.vehicleType || '').toLowerCase();
-        const device = (d.registeredDevice || d.lastDevice || '').toLowerCase();
-        return name.includes(query) || phone.includes(query) || email.includes(query) || city.includes(query) || state.includes(query) || vehicle.includes(query) || device.includes(query);
+        const device = (
+          d.activeSessionDevice ||
+          d.registeredDevice ||
+          d.lastDevice ||
+          ''
+        ).toLowerCase();
+        const appVersion = (
+          d.activeSessionAppVersion ||
+          d.registeredAppVersion ||
+          ''
+        ).toLowerCase();
+        const blockReason = (
+          d.blockReason ||
+          d.deviceBlacklistReason ||
+          ''
+        ).toLowerCase();
+
+        return (
+          name.includes(query) ||
+          phone.includes(query) ||
+          email.includes(query) ||
+          city.includes(query) ||
+          state.includes(query) ||
+          vehicle.includes(query) ||
+          device.includes(query) ||
+          appVersion.includes(query) ||
+          blockReason.includes(query)
+        );
       });
 
       if (filtered.length === 0) {
@@ -875,7 +1286,11 @@
 
       let html = '';
       filtered.forEach(driver => {
-        const isCurrentAdmin = (driver.isAdmin === true || driver.uid === currentAdminUid);
+        const isCurrentAdmin = (
+          driver.isAdmin === true ||
+          driver.uid === currentAdminUid ||
+          (Array.isArray(driver.sourceUids) && driver.sourceUids.includes(currentAdminUid))
+        );
 
         // Vehicle badge style
         let vehicleBg = '#172554';
@@ -888,7 +1303,7 @@
           vehicleColor = '#34D399';
         }
 
-        // Action Button: Protected for admin, toggle for regular users
+        // DEVICE_LOCK_ADMIN_V1
         let actionCell = '';
         if (isCurrentAdmin) {
           actionCell = `
@@ -897,20 +1312,57 @@
             </span>
           `;
         } else {
-          if (driver.isActive) {
-            actionCell = `
-              <button type="button" class="btn btn-danger btn-sm" onclick="toggleDriverActive('${driver.uid}', true, '${escapeHtml(driver.name)}')" title="Click to Deactivate driver">
-                <i class="fa-solid fa-toggle-on"></i> Deactivate
-              </button>
-            `;
-          } else {
-            actionCell = `
-              <button type="button" class="btn btn-success btn-sm" onclick="toggleDriverActive('${driver.uid}', false, '${escapeHtml(driver.name)}')" title="Click to Activate driver">
-                <i class="fa-solid fa-toggle-off"></i> Activate
-              </button>
-            `;
-          }
+          const lockButton =
+            driver.isActive
+              ? `
+                <button type="button" class="btn btn-danger btn-sm" onclick="toggleDriverActive('${driver.uid}', true, '${escapeHtml(driver.name)}')" title="Remote lock SmartDrivo">
+                  <i class="fa-solid fa-lock"></i> Lock App
+                </button>
+              `
+              : `
+                <button type="button" class="btn btn-success btn-sm" onclick="toggleDriverActive('${driver.uid}', false, '${escapeHtml(driver.name)}')" title="Remote unlock SmartDrivo">
+                  <i class="fa-solid fa-lock-open"></i> Unlock App
+                </button>
+              `;
+
+
+
+                    // BLOCKED_USER_DEVICE_BLACKLIST_V1
+          const blockUserButton =
+            driver.isBlocked
+              ? `
+                <button type="button" class="btn btn-success btn-sm" onclick="togglePermanentUserBlock('${driver.uid}', true, '${escapeHtml(driver.name)}')" title="Remove permanent account block">
+                  <i class="fa-solid fa-user-check"></i> Unblock User
+                </button>
+              `
+              : `
+                <button type="button" class="btn btn-danger btn-sm" onclick="togglePermanentUserBlock('${driver.uid}', false, '${escapeHtml(driver.name)}')" title="Permanently block this account">
+                  <i class="fa-solid fa-user-slash"></i> Block User
+                </button>
+              `;
+
+actionCell = `
+            <div style="display:flex; flex-direction:column; gap:6px; min-width:132px;">
+              ${lockButton}
+              ${blockUserButton}
+            </div>
+          `;
         }
+
+        // SECURITY_STATUS_ADMIN_V1
+        const securityStatus =
+          getDriverSecurityStatus(driver);
+
+        const activeDevice =
+          driver.activeSessionDevice ||
+          driver.registeredDevice ||
+          driver.lastDevice ||
+          'Not captured';
+
+        const activeAppVersion =
+          driver.activeSessionAppVersion ||
+          driver.registeredAppVersion ||
+          'Unknown';
 
         html += `
           <tr>
@@ -937,14 +1389,55 @@
                   ].filter(Boolean).join(' | ')
                 )}
               </div>
+
+              <!-- SECURITY_STATUS_ADMIN_V1 -->
+              <div style="margin-top:8px; padding-top:7px; border-top:1px solid rgba(148,163,184,.16);">
+                <div style="font-size:10px; color:#CBD5E1;">
+                  <strong>Active Device:</strong>
+                  ${escapeHtml(activeDevice)}
+                </div>
+                <div style="font-size:10px; color:#CBD5E1; margin-top:2px;">
+                  <strong>App:</strong>
+                  ${escapeHtml(activeAppVersion)}
+                </div>
+                <div
+                  style="font-size:10px; color:#94A3B8; margin-top:2px;"
+                  title="${escapeHtml(formatTime(driver.lastSeenAt))}"
+                >
+                  <strong>Last Seen:</strong>
+                  ${escapeHtml(formatRelativeLastSeen(driver.lastSeenAt))}
+                </div>
+                <div style="font-size:10px; color:#94A3B8; margin-top:2px;">
+                  <strong>Session:</strong>
+                  ${
+                    driver.activeSessionId
+                      ? `Active since ${escapeHtml(formatTime(driver.activeSessionStartedAt))}`
+                      : 'Not claimed yet'
+                  }
+                </div>
+              </div>
             </td>
             <td><strong>${escapeHtml(driver.plan === 'FREE_TRIAL' ? '1-Day Free Trial' : driver.plan)}</strong> <span style="font-size: 11px; color: var(--text-dim);">${driver.planPrice ? `(₹${driver.planPrice})` : ''}</span></td>
             <td>${formatExpiry(driver.planExpireMillis, driver.isAdmin)}</td>
             <td>
-              ${driver.isActive ?
-                '<span class="badge badge-approved"><i class="fa-solid fa-circle-check"></i> Active</span>' :
-                '<span class="badge badge-rejected"><i class="fa-solid fa-circle-xmark"></i> Inactive</span>'
-              }
+              <!-- SECURITY_STATUS_ADMIN_V1 -->
+              <span
+                class="badge"
+                style="
+                  background:${securityStatus.background};
+                  color:${securityStatus.color};
+                  border:1px solid ${securityStatus.color}33;
+                "
+              >
+                <i class="fa-solid ${securityStatus.icon}"></i>
+                ${escapeHtml(securityStatus.label)}
+              </span>
+
+              <div style="font-size:10px; color:#CBD5E1; margin-top:6px; max-width:190px; line-height:1.35;">
+                <strong>Reason:</strong>
+                ${escapeHtml(securityStatus.reason)}
+              </div>
+
             </td>
             <td>${actionCell}</td>
           </tr>
@@ -971,31 +1464,159 @@
       }
     }
 
-    // 4. TOGGLE DRIVER STATUS (REAL FIRESTORE WRITE)
+    // 4. DEVICE LOCK / REMOTE LOCK CONTROLS
     async function toggleDriverActive(uid, currentlyActive, driverName) {
-      // Safeguard against admin deactivation
-      const target = liveDrivers.find(d => d.uid === uid);
-      if (target && target.isAdmin) {
-        alert("Protection Guard: Administrator accounts cannot be deactivated!");
+      const target = liveDrivers.find(
+        d =>
+          d.uid === uid ||
+          (
+            Array.isArray(d.sourceUids) &&
+            d.sourceUids.includes(uid)
+          )
+      );
+
+      if (
+        target &&
+        (
+          target.isAdmin ||
+          target.uid === currentAdminUid ||
+          (
+            Array.isArray(target.sourceUids) &&
+            target.sourceUids.includes(currentAdminUid)
+          )
+        )
+      ) {
+        alert("Protection Guard: Administrator accounts cannot be locked!");
         return;
       }
 
       const targetStatus = !currentlyActive;
-      const action = targetStatus ? 'activate' : 'deactivate';
-      if (!confirm(`Are you sure you want to ${action} ${driverName || 'this driver'}?`)) return;
+      const action = targetStatus ? 'unlock' : 'lock';
+
+      if (!confirm(`Are you sure you want to ${action} SmartDrivo for ${driverName || 'this driver'}?`)) return;
 
       try {
-        logMessage(`Writing to Firestore: /users/${uid} isActive -> ${targetStatus}...`);
-        await db.collection('users').doc(uid).update({
-          isActive: targetStatus,
-          updatedAt: Date.now()
+        const targetUids =
+          target &&
+          Array.isArray(target.sourceUids) &&
+          target.sourceUids.length > 0
+            ? [...new Set(target.sourceUids)]
+            : [uid];
+
+        const batch = db.batch();
+
+        targetUids.forEach(targetUid => {
+          batch.update(
+            db.collection('users').doc(targetUid),
+            {
+              isActive: targetStatus,
+              updatedAt: Date.now()
+            }
+          );
         });
-        showToast(`Driver successfully ${targetStatus ? 'activated' : 'deactivated'} in Firestore.`, 'success');
-        logMessage(`Successfully updated status for driver ${driverName} (${uid}).`);
+
+        await batch.commit();
+
+        showToast(
+          `SmartDrivo ${targetStatus ? 'unlocked' : 'locked'} for ${driverName || 'driver'}.`,
+          'success'
+        );
       } catch (err) {
-        console.error("Firestore status toggle failed:", err);
-        logMessage(`Error updating driver status: ${err.message}`);
-        showToast(`Error updating driver: ${err.message}`, 'error');
+        console.error("Firestore lock toggle failed:", err);
+        showToast(`Error updating driver lock: ${err.message}`, 'error');
+      }
+    }
+
+    // BLOCKED_USER_DEVICE_BLACKLIST_V1
+    async function togglePermanentUserBlock(
+      uid,
+      currentlyBlocked,
+      driverName
+    ) {
+      const target = liveDrivers.find(
+        d =>
+          d.uid === uid ||
+          (
+            Array.isArray(d.sourceUids) &&
+            d.sourceUids.includes(uid)
+          )
+      );
+
+      if (
+        !target ||
+        target.isAdmin ||
+        target.uid === currentAdminUid ||
+        (
+          Array.isArray(target.sourceUids) &&
+          target.sourceUids.includes(currentAdminUid)
+        )
+      ) {
+        alert("Protection Guard: Administrator accounts cannot be blocked.");
+        return;
+      }
+
+      const shouldBlock = !currentlyBlocked;
+
+      const reason =
+        shouldBlock
+          ? (
+              prompt(
+                `Reason for permanently blocking ${driverName || 'this driver'}:`,
+                'Blocked by SmartDrivo Admin'
+              ) || ''
+            ).trim()
+          : '';
+
+      if (shouldBlock && !reason) {
+        return;
+      }
+
+      if (
+        !confirm(
+          shouldBlock
+            ? `Permanently block ${driverName || 'this driver'}?`
+            : `Remove permanent account block for ${driverName || 'this driver'}?`
+        )
+      ) {
+        return;
+      }
+
+      try {
+        const targetUids =
+          Array.isArray(target.sourceUids) &&
+          target.sourceUids.length > 0
+            ? [...new Set(target.sourceUids)]
+            : [uid];
+
+        const batch = db.batch();
+        const now = Date.now();
+
+        targetUids.forEach(targetUid => {
+          batch.update(
+            db.collection('users').doc(targetUid),
+            {
+              isBlocked: shouldBlock,
+              blockReason: reason,
+              blockedAt: shouldBlock ? now : 0,
+              updatedAt: now
+            }
+          );
+        });
+
+        await batch.commit();
+
+        showToast(
+          shouldBlock
+            ? `${driverName || 'Driver'} permanently blocked.`
+            : `${driverName || 'Driver'} account unblocked.`,
+          'success'
+        );
+      } catch (err) {
+        console.error("Permanent user block failed:", err);
+        showToast(
+          `Could not update permanent block: ${err.message}`,
+          'error'
+        );
       }
     }
 
@@ -1466,7 +2087,117 @@
       }
     }
 
-    // 10. SAVE COMMUNITY LINKS
+
+    // MINIMUM_VERSION_LOCK_ADMIN_V1
+    async function saveMinimumVersionPolicy() {
+      const minimumCode =
+        Number(
+          document.getElementById(
+            'minimumAppVersionCodeInput'
+          ).value
+        );
+
+      const minimumName =
+        document.getElementById(
+          'minimumAppVersionNameInput'
+        ).value.trim();
+
+      const updateUrl =
+        document.getElementById(
+          'forceUpdateUrlInput'
+        ).value.trim();
+
+      const enabled =
+        document.getElementById(
+          'forceUpdateEnabledInput'
+        ).checked;
+
+      if (
+        !Number.isInteger(minimumCode) ||
+        minimumCode < 1
+      ) {
+        alert(
+          'Minimum Version Code must be a whole number 1 or higher.'
+        );
+        return;
+      }
+
+      if (!minimumName) {
+        alert(
+          'Please enter the required version name, for example 1.0.6.'
+        );
+        return;
+      }
+
+      if (
+        enabled &&
+        !confirm(
+          `Enable Force Update?\n\n` +
+          `All non-admin users below versionCode ${minimumCode} ` +
+          `will be locked until they update.`
+        )
+      ) {
+        return;
+      }
+
+      const saveBtn =
+        document.getElementById(
+          'saveMinimumVersionBtn'
+        );
+
+      saveBtn.disabled = true;
+      saveBtn.innerHTML =
+        '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
+
+      try {
+        await db
+          .collection('settings')
+          .doc('global')
+          .set(
+            {
+              forceUpdateEnabled: enabled,
+              minimumAppVersionCode: minimumCode,
+              minimumAppVersionName: minimumName,
+              forceUpdateUrl: updateUrl,
+              minimumVersionUpdatedAt: Date.now(),
+              minimumVersionUpdatedBy:
+                currentAdminEmail ||
+                currentAdminUid
+            },
+            { merge: true }
+          );
+
+        showToast(
+          enabled
+            ? `Force Update enabled: minimum ${minimumName} (code ${minimumCode}).`
+            : 'Force Update policy saved but currently OFF.',
+          enabled
+            ? 'warning'
+            : 'success'
+        );
+
+        logMessage(
+          `Minimum version policy saved: enabled=${enabled}, ` +
+          `version=${minimumName}, code=${minimumCode}`
+        );
+      } catch (err) {
+        console.error(
+          'Minimum version save error:',
+          err
+        );
+
+        showToast(
+          `Error saving minimum version: ${err.message}`,
+          'error'
+        );
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML =
+          '<i class="fa-solid fa-floppy-disk"></i> Save Minimum Version';
+      }
+    }
+
+    // 11. SAVE COMMUNITY LINKS
     async function saveCommunityLinks() {
       const whatsapp = document.getElementById('whatsappInput').value.trim();
       const telegram = document.getElementById('telegramInput').value.trim();

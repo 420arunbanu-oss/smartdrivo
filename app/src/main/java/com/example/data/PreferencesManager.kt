@@ -21,6 +21,7 @@ import com.example.model.PaymentSubmission
 import com.example.model.Platform
 import com.example.model.UserProfile
 import com.example.model.VehicleType
+import com.example.security.SignatureIntegrity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,6 +44,51 @@ class PreferencesManager(private val context: Context) {
 
     private val _appSettings = MutableStateFlow(loadAppSettingsRaw())
     val appSettings: StateFlow<AppSettings> = _appSettings.asStateFlow()
+
+    // OFFLINE_GRACE_LOCK_V1
+    private val _lastSecurityVerificationAt =
+        MutableStateFlow(
+            prefs.getLong(
+                KEY_LAST_SECURITY_VERIFIED_AT,
+                0L
+            )
+        )
+
+    val lastSecurityVerificationAt:
+        StateFlow<Long> =
+        _lastSecurityVerificationAt.asStateFlow()
+
+    // LOGIN_SESSION_LOCK_V1
+    private val _loginSessionInvalidated =
+        MutableStateFlow(
+            prefs.getBoolean(
+                KEY_LOGIN_SESSION_INVALIDATED,
+                false
+            )
+        )
+
+    val loginSessionInvalidated:
+        StateFlow<Boolean> =
+        _loginSessionInvalidated.asStateFlow()
+
+    private val _loginSessionReason =
+        MutableStateFlow(
+            prefs.getString(
+                KEY_LOGIN_SESSION_REASON,
+                ""
+            ).orEmpty()
+        )
+
+    val loginSessionReason:
+        StateFlow<String> =
+        _loginSessionReason.asStateFlow()
+
+    val currentLoginSessionId: String
+        get() =
+            prefs.getString(
+                KEY_LOGIN_SESSION_ID,
+                ""
+            ).orEmpty()
 
     private val _goToAreas = MutableStateFlow(loadGoToAreaGroups())
     val goToAreas: StateFlow<List<AreaGroup>> = _goToAreas.asStateFlow()
@@ -195,6 +241,70 @@ class PreferencesManager(private val context: Context) {
     )
     val communityLinks: StateFlow<com.example.model.CommunityLinks> = _communityLinks.asStateFlow()
 
+
+    // MINIMUM_VERSION_LOCK_V1
+    // Cached entitlement snapshot. Updated only by the global Firestore settings
+    // listener, never from the real-order decision path.
+    private val _forceUpdateEnabled =
+        MutableStateFlow(
+            prefs.getBoolean(
+                KEY_FORCE_UPDATE_ENABLED,
+                false
+            )
+        )
+    val forceUpdateEnabled: StateFlow<Boolean> =
+        _forceUpdateEnabled.asStateFlow()
+
+    private val _minimumAppVersionCode =
+        MutableStateFlow(
+            prefs.getInt(
+                KEY_MINIMUM_APP_VERSION_CODE,
+                0
+            )
+        )
+    val minimumAppVersionCode: StateFlow<Int> =
+        _minimumAppVersionCode.asStateFlow()
+
+    private val _minimumAppVersionName =
+        MutableStateFlow(
+            prefs.getString(
+                KEY_MINIMUM_APP_VERSION_NAME,
+                ""
+            ) ?: ""
+        )
+    val minimumAppVersionName: StateFlow<String> =
+        _minimumAppVersionName.asStateFlow()
+
+    private val _forceUpdateUrl =
+        MutableStateFlow(
+            prefs.getString(
+                KEY_FORCE_UPDATE_URL,
+                ""
+            ) ?: ""
+        )
+    val forceUpdateUrl: StateFlow<String> =
+        _forceUpdateUrl.asStateFlow()
+
+    // APK_SIGNATURE_TAMPER_LOCK_V1
+    // Certificate verification happens once when PreferencesManager is created.
+    // The result is then a RAM snapshot for UI/service checks.
+    private val initialApkSignatureResult =
+        SignatureIntegrity.verify(context)
+
+    private val _apkSignatureValid =
+        MutableStateFlow(
+            initialApkSignatureResult.isValid
+        )
+
+    val apkSignatureValid:
+        StateFlow<Boolean> =
+        _apkSignatureValid.asStateFlow()
+
+    val apkSignatureSha256: String =
+        initialApkSignatureResult
+            .actualSha256
+            .joinToString(",")
+
     private val _lastAcceptedRide = MutableStateFlow<OrderHistoryItem?>(loadLastAccepted())
     val lastAcceptedRide: StateFlow<OrderHistoryItem?> = _lastAcceptedRide.asStateFlow()
 
@@ -315,6 +425,313 @@ class PreferencesManager(private val context: Context) {
         }
     }
 
+    // DEVICE_AUTH_V2: preserve old bindings for all already-installed users.
+    // New installs use a privacy-safe stable, per-app device token when available.
+    // This is not proof of genuine hardware; backend authorization remains required.
+    @Synchronized
+    fun getOrCreateInstallId(): String {
+        val existing = prefs.getString(KEY_INSTALL_ID, "").orEmpty()
+        if (existing.isNotBlank()) return existing
+
+        val androidId = try {
+            android.provider.Settings.Secure.getString(
+                context.contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID
+            )?.trim().orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+
+        val generated = if (
+            androidId.isNotBlank() && androidId != "9774d56d682e549c"
+        ) {
+            val source = "SMARTDRIVO_DEVICE_BIND_V2|${context.packageName}|$androidId"
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(source.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            "SD2-$digest"
+        } else {
+            // Never authorize solely from a phone model if ANDROID_ID is unavailable.
+            "SD-" + UUID.randomUUID().toString()
+        }
+
+        check(prefs.edit().putString(KEY_INSTALL_ID, generated).commit()) {
+            "Could not persist SmartDrivo device binding"
+        }
+        return generated
+    }
+
+    // OFFLINE_GRACE_LOCK_V1
+    // A successful server verification refreshes this local entitlement lease.
+    // No network call is performed by these methods.
+    fun markSecurityVerifiedNow(
+        userId: String
+    ) {
+        val cleanUid =
+            userId.trim()
+
+        if (cleanUid.isBlank()) {
+            return
+        }
+
+        val now =
+            System.currentTimeMillis()
+
+        prefs.edit()
+            .putString(
+                KEY_LAST_SECURITY_VERIFIED_UID,
+                cleanUid
+            )
+            .putLong(
+                KEY_LAST_SECURITY_VERIFIED_AT,
+                now
+            )
+            .apply()
+
+        _lastSecurityVerificationAt.value =
+            now
+    }
+
+    // One-time migration for users who were already signed in before this
+    // feature existed. It grants one normal grace window, but never renews
+    // an expired lease locally.
+    fun seedOfflineGraceForExistingUserIfNeeded(
+        userId: String
+    ) {
+        val cleanUid =
+            userId.trim()
+
+        if (
+            !isLoggedIn ||
+            cleanUid.isBlank()
+        ) {
+            return
+        }
+
+        val storedAt =
+            prefs.getLong(
+                KEY_LAST_SECURITY_VERIFIED_AT,
+                0L
+            )
+
+        val storedUid =
+            prefs.getString(
+                KEY_LAST_SECURITY_VERIFIED_UID,
+                ""
+            ).orEmpty()
+
+        if (
+            storedAt <= 0L &&
+            storedUid.isBlank()
+        ) {
+            markSecurityVerifiedNow(
+                cleanUid
+            )
+        }
+    }
+
+    fun isOfflineGraceValid(
+        userId: String,
+        now: Long =
+            System.currentTimeMillis()
+    ): Boolean {
+        val cleanUid =
+            userId.trim()
+
+        if (cleanUid.isBlank()) {
+            return false
+        }
+
+        val verifiedUid =
+            prefs.getString(
+                KEY_LAST_SECURITY_VERIFIED_UID,
+                ""
+            ).orEmpty()
+
+        val verifiedAt =
+            prefs.getLong(
+                KEY_LAST_SECURITY_VERIFIED_AT,
+                0L
+            )
+
+        if (
+            verifiedAt <= 0L ||
+            verifiedUid != cleanUid
+        ) {
+            return false
+        }
+
+        // Large backwards clock jumps must not extend the lease forever.
+        if (
+            now <
+                verifiedAt -
+                    5L * 60L * 1000L
+        ) {
+            return false
+        }
+
+        val age =
+            (now - verifiedAt)
+                .coerceAtLeast(0L)
+
+        return age <=
+            OFFLINE_SECURITY_GRACE_MS
+    }
+
+    fun offlineGraceRemainingMs(
+        userId: String,
+        now: Long =
+            System.currentTimeMillis()
+    ): Long {
+        if (
+            !isOfflineGraceValid(
+                userId,
+                now
+            )
+        ) {
+            return 0L
+        }
+
+        val verifiedAt =
+            prefs.getLong(
+                KEY_LAST_SECURITY_VERIFIED_AT,
+                0L
+            )
+
+        return (
+            OFFLINE_SECURITY_GRACE_MS -
+                (now - verifiedAt)
+                    .coerceAtLeast(0L)
+            )
+            .coerceAtLeast(0L)
+    }
+
+    // LOGIN_SESSION_LOCK_V1
+    // One account may have only one current SmartDrivo app session.
+    // The UUID is random and contains no device identifier.
+    @Synchronized
+    fun getOrCreateLoginSessionIdForClaim(): String {
+        val existing =
+            prefs.getString(
+                KEY_LOGIN_SESSION_ID,
+                ""
+            ).orEmpty()
+
+        if (existing.isNotBlank()) {
+            return existing
+        }
+
+        val created =
+            "SDS-" +
+                UUID.randomUUID()
+                    .toString()
+
+        prefs.edit()
+            .putString(
+                KEY_LOGIN_SESSION_ID,
+                created
+            )
+            .putBoolean(
+                KEY_LOGIN_SESSION_INVALIDATED,
+                false
+            )
+            .putString(
+                KEY_LOGIN_SESSION_REASON,
+                ""
+            )
+            .commit()
+
+        _loginSessionInvalidated.value =
+            false
+        _loginSessionReason.value =
+            ""
+
+        return created
+    }
+
+    fun markLoginSessionActive(
+        sessionId: String
+    ) {
+        val clean =
+            sessionId.trim()
+
+        if (clean.isBlank()) {
+            return
+        }
+
+        prefs.edit()
+            .putString(
+                KEY_LOGIN_SESSION_ID,
+                clean
+            )
+            .putBoolean(
+                KEY_LOGIN_SESSION_INVALIDATED,
+                false
+            )
+            .putString(
+                KEY_LOGIN_SESSION_REASON,
+                ""
+            )
+            .apply()
+
+        _loginSessionInvalidated.value =
+            false
+        _loginSessionReason.value =
+            ""
+    }
+
+    fun invalidateLoginSession(
+        reason: String
+    ) {
+        val safeReason =
+            reason.trim()
+                .ifBlank {
+                    "This SmartDrivo account was signed in on another device."
+                }
+
+        prefs.edit()
+            .putBoolean(
+                KEY_LOGIN_SESSION_INVALIDATED,
+                true
+            )
+            .putString(
+                KEY_LOGIN_SESSION_REASON,
+                safeReason
+            )
+            .apply()
+
+        _loginSessionInvalidated.value =
+            true
+        _loginSessionReason.value =
+            safeReason
+    }
+
+    fun clearLoginSessionState() {
+        prefs.edit()
+            .remove(
+                KEY_LOGIN_SESSION_ID
+            )
+            .putBoolean(
+                KEY_LOGIN_SESSION_INVALIDATED,
+                false
+            )
+            .putString(
+                KEY_LOGIN_SESSION_REASON,
+                ""
+            )
+            .apply()
+
+        _loginSessionInvalidated.value =
+            false
+        _loginSessionReason.value =
+            ""
+    }
+
+    // Admin accounts are intentionally exempt from the one-session driver lock.
+    fun clearLoginSessionForAdmin() {
+        clearLoginSessionState()
+    }
+
     // --- User Profile ---
     fun saveUserProfile(profile: UserProfile) {
         prefs.edit().apply {
@@ -331,6 +748,25 @@ class PreferencesManager(private val context: Context) {
             putBoolean(KEY_IS_APPROVED, profile.isApproved)
             putBoolean(KEY_IS_ADMIN, profile.isAdmin)
             putBoolean(KEY_IS_ACTIVE, profile.isActive)
+
+            // OFFLINE_GRACE_LOCK_V3
+            // Persist the last verified block state so force-stop/restart while
+            // offline cannot forget an already-known account/device block.
+            putBoolean(KEY_IS_BLOCKED, profile.isBlocked)
+            putString(KEY_BLOCK_REASON, profile.blockReason)
+            putBoolean(
+                KEY_DEVICE_BLACKLISTED,
+                profile.isDeviceBlacklisted
+            )
+            putString(
+                KEY_DEVICE_BLACKLIST_REASON,
+                profile.deviceBlacklistReason
+            )
+
+            putString(KEY_BOUND_INSTALL_ID, profile.boundInstallId)
+            putString(KEY_BOUND_DEVICE_NAME, profile.boundDeviceName)
+            putBoolean(KEY_DEVICE_AUTHORIZED, profile.isDeviceAuthorized)
+            putBoolean(KEY_DEVICE_CHANGE_REQUESTED, profile.deviceChangeRequested)
             putString(KEY_REFERRAL, profile.referralCode)
             apply()
         }
@@ -352,6 +788,33 @@ class PreferencesManager(private val context: Context) {
         val isApproved = prefs.getBoolean(KEY_IS_APPROVED, false)
         val isAdmin = prefs.getBoolean(KEY_IS_ADMIN, false)
         val isActive = prefs.getBoolean(KEY_IS_ACTIVE, true)
+
+        // OFFLINE_GRACE_LOCK_V3
+        val isBlocked =
+            prefs.getBoolean(
+                KEY_IS_BLOCKED,
+                false
+            )
+        val blockReason =
+            prefs.getString(
+                KEY_BLOCK_REASON,
+                ""
+            ).orEmpty()
+        val isDeviceBlacklisted =
+            prefs.getBoolean(
+                KEY_DEVICE_BLACKLISTED,
+                false
+            )
+        val deviceBlacklistReason =
+            prefs.getString(
+                KEY_DEVICE_BLACKLIST_REASON,
+                ""
+            ).orEmpty()
+
+        val boundInstallId = prefs.getString(KEY_BOUND_INSTALL_ID, "") ?: ""
+        val boundDeviceName = prefs.getString(KEY_BOUND_DEVICE_NAME, "") ?: ""
+        val isDeviceAuthorized = prefs.getBoolean(KEY_DEVICE_AUTHORIZED, true)
+        val deviceChangeRequested = prefs.getBoolean(KEY_DEVICE_CHANGE_REQUESTED, false)
         val referral = prefs.getString(KEY_REFERRAL, "SMART50") ?: "SMART50"
 
         return UserProfile(
@@ -368,6 +831,16 @@ class PreferencesManager(private val context: Context) {
             isApproved = isApproved,
             isAdmin = isAdmin,
             isActive = isActive,
+            isBlocked = isBlocked,
+            blockReason = blockReason,
+            isDeviceBlacklisted =
+                isDeviceBlacklisted,
+            deviceBlacklistReason =
+                deviceBlacklistReason,
+            boundInstallId = boundInstallId,
+            boundDeviceName = boundDeviceName,
+            isDeviceAuthorized = isDeviceAuthorized,
+            deviceChangeRequested = deviceChangeRequested,
             referralCode = referral
         )
     }
@@ -383,6 +856,10 @@ class PreferencesManager(private val context: Context) {
             putBoolean(KEY_AUTO_ACCEPT, settings.isAutoAcceptActive)
             putBoolean(KEY_AUTO_REJECT_BAD_FARES, settings.isAutoRejectBadFaresEnabled)
             putBoolean(KEY_FASTEST_MODE, settings.isFastestModeEnabled)
+            putBoolean(
+                KEY_PRIMARY_FILTER_ENABLED,
+                settings.isPrimaryFilterEnabled
+            )
             putBoolean(
                 "setting_order_reason_popups",
                 settings.showOrderReasonPopups
@@ -491,6 +968,11 @@ class PreferencesManager(private val context: Context) {
             isAutoAcceptActive = prefs.getBoolean(KEY_AUTO_ACCEPT, true),
             isAutoRejectBadFaresEnabled = prefs.getBoolean(KEY_AUTO_REJECT_BAD_FARES, false),
             isFastestModeEnabled = prefs.getBoolean(KEY_FASTEST_MODE, false),
+            isPrimaryFilterEnabled =
+                prefs.getBoolean(
+                    KEY_PRIMARY_FILTER_ENABLED,
+                    true
+                ),
             showOrderReasonPopups =
                 prefs.getBoolean(
                     "setting_order_reason_popups",
@@ -1347,8 +1829,81 @@ class PreferencesManager(private val context: Context) {
             )
     }
 
+
+    // MINIMUM_VERSION_LOCK_V1
+    fun updateMinimumVersionPolicy(
+        enabled: Boolean,
+        minimumVersionCode: Int,
+        minimumVersionName: String,
+        updateUrl: String
+    ) {
+        val safeCode =
+            minimumVersionCode.coerceAtLeast(0)
+
+        val safeName =
+            minimumVersionName.trim()
+
+        val safeUrl =
+            updateUrl.trim()
+
+        prefs.edit()
+            .putBoolean(
+                KEY_FORCE_UPDATE_ENABLED,
+                enabled
+            )
+            .putInt(
+                KEY_MINIMUM_APP_VERSION_CODE,
+                safeCode
+            )
+            .putString(
+                KEY_MINIMUM_APP_VERSION_NAME,
+                safeName
+            )
+            .putString(
+                KEY_FORCE_UPDATE_URL,
+                safeUrl
+            )
+            .apply()
+
+        _forceUpdateEnabled.value = enabled
+        _minimumAppVersionCode.value = safeCode
+        _minimumAppVersionName.value = safeName
+        _forceUpdateUrl.value = safeUrl
+    }
+
     companion object {
         const val DEFAULT_UPI_ID = "gpay-11189725657@okaxis"
+
+        // OFFLINE_GRACE_LOCK_V1
+        // Six hours: enough for temporary backend/network interruption while
+        // still requiring periodic server verification.
+        const val OFFLINE_SECURITY_GRACE_MS =
+            6L * 60L * 60L * 1000L
+
+        private const val KEY_LAST_SECURITY_VERIFIED_AT =
+            "security_last_verified_at_v1"
+
+        private const val KEY_LAST_SECURITY_VERIFIED_UID =
+            "security_last_verified_uid_v1"
+
+        // LOGIN_SESSION_LOCK_V1
+        private const val KEY_LOGIN_SESSION_ID =
+            "security_login_session_id_v1"
+        private const val KEY_LOGIN_SESSION_INVALIDATED =
+            "security_login_session_invalidated_v1"
+        private const val KEY_LOGIN_SESSION_REASON =
+            "security_login_session_reason_v1"
+
+        // MINIMUM_VERSION_LOCK_V1
+        private const val KEY_FORCE_UPDATE_ENABLED =
+            "security_force_update_enabled"
+        private const val KEY_MINIMUM_APP_VERSION_CODE =
+            "security_minimum_app_version_code"
+        private const val KEY_MINIMUM_APP_VERSION_NAME =
+            "security_minimum_app_version_name"
+        private const val KEY_FORCE_UPDATE_URL =
+            "security_force_update_url"
+
 
         // Process-wide shared StateFlow for instant cross-component updates (UI auto-refresh)
         private val _sharedOrderHistory = MutableStateFlow<List<OrderHistoryItem>>(emptyList())
@@ -1383,6 +1938,22 @@ class PreferencesManager(private val context: Context) {
         private const val KEY_IS_APPROVED = "user_is_approved"
         private const val KEY_IS_ADMIN = "user_is_admin"
         private const val KEY_IS_ACTIVE = "user_is_active"
+
+        // OFFLINE_GRACE_LOCK_V3
+        private const val KEY_IS_BLOCKED =
+            "security_account_blocked_v1"
+        private const val KEY_BLOCK_REASON =
+            "security_account_block_reason_v1"
+        private const val KEY_DEVICE_BLACKLISTED =
+            "security_device_blacklisted_v1"
+        private const val KEY_DEVICE_BLACKLIST_REASON =
+            "security_device_blacklist_reason_v1"
+
+        private const val KEY_BOUND_INSTALL_ID = "security_bound_install_id"
+        private const val KEY_BOUND_DEVICE_NAME = "security_bound_device_name"
+        private const val KEY_DEVICE_AUTHORIZED = "security_device_authorized"
+        private const val KEY_DEVICE_CHANGE_REQUESTED = "security_device_change_requested"
+        private const val KEY_INSTALL_ID = "security_local_install_id_v1"
         private const val KEY_REFERRAL = "user_referral"
         private const val KEY_IS_LOGGED_IN = "user_is_logged_in"
         private const val KEY_HAS_OPENED_BEFORE = "app_has_opened_before"
@@ -1390,6 +1961,8 @@ class PreferencesManager(private val context: Context) {
         private const val KEY_AUTO_ACCEPT = "setting_auto_accept"
         private const val KEY_AUTO_REJECT_BAD_FARES = "setting_auto_reject_bad_fares"
         private const val KEY_FASTEST_MODE = "setting_fastest_mode"
+        private const val KEY_PRIMARY_FILTER_ENABLED =
+            "setting_primary_filter_enabled"
 
         private const val KEY_SECONDARY_BOTH_ENABLED =
             "setting_secondary_both_filter_enabled"
