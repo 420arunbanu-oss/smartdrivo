@@ -366,6 +366,12 @@ class SmartDrivoAccessibilityService : AccessibilityService() {
     @Volatile
     private var activeRapidoPopupOrderId: String? = null
 
+    // RAPIDO_VISIBLE_IGNORED_DEDUP_V1
+    // When Auto Reject is OFF, an unmatched popup stays visible.
+    // Pickup km may change, but that must not create a new History card.
+    private val rapidoIgnoredVisibleOfferGuard =
+        com.example.engine.RapidoIgnoredVisibleOfferGuard()
+
     @Volatile
     private var lastValidRapidoPopupAt: Long = 0L
     private val toggleReceiver = object : BroadcastReceiver() {
@@ -516,6 +522,7 @@ private val processingTimeoutRunnable = Runnable {
         isProcessing = false
         isRapidoEventProcessing = false
         activeRapidoPopupOrderId = null
+        rapidoIgnoredVisibleOfferGuard.clear()
         activeOrderRecordIds.clear()
 
         isClickInProgress = false
@@ -2921,6 +2928,7 @@ private val processingTimeoutRunnable = Runnable {
                     popupGapMs > 1_200L
                 ) {
                     activeRapidoPopupOrderId = null
+                    rapidoIgnoredVisibleOfferGuard.clear()
                     lastValidRapidoPopupAt = 0L
                 }
                 Log.d(
@@ -7516,6 +7524,15 @@ private val processingTimeoutRunnable = Runnable {
         val bookingId = candidate.bookingId
         val orderId = snapshot.orderId
 
+        // Only affects unmatched offers kept visible when Auto Reject is OFF.
+        // Do not compare mutable pickup distance or reinsert into History.
+        if (!prefs.appSettings.value.isAutoRejectBadFaresEnabled &&
+            rapidoIgnoredVisibleOfferGuard.isDuplicateIgnored(candidate)
+        ) {
+            Log.d(TAG, "RAPIDO IGNORED DEDUP: still-visible unmatched offer; no new History row")
+            return
+        }
+
         if (activeRapidoPopupOrderId == orderId) {
             Log.i(
                 TAG,
@@ -8997,6 +9014,12 @@ val isOrderStillVisible =
                 historyPreFinalized = true
             )
             return
+        }
+
+        // Auto Reject OFF: Rapido keeps this same offer on screen.
+        // Remember it so later Accessibility updates cannot log it again.
+        if (candidate.platform == Platform.RAPIDO) {
+            rapidoIgnoredVisibleOfferGuard.rememberIgnored(candidate)
         }
 
         onOrderDecisionFast(
