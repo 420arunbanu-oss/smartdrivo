@@ -2447,17 +2447,11 @@ object RapidoAdapter {
                 root
             )
 
-        if (
-            isRapidoHomeScreenTexts(
-                singlePass.homeTexts
-            )
-        ) {
-            return RapidoPopupValidation(
-                isValid = false,
-                failureReason =
-                    "Home screen detected ('Today's Earnings' / 'ON DUTY' / 'Blue Performance')"
-            )
-        }
+        // RAPIDO_OVERLAY_HOME_READ_V1
+        // Rapido Home content can remain behind a genuine incoming popup.
+        // Do not reject merely for seeing "ON DUTY"; evaluate the actual
+        // fare, pickup, trip and STRICT Accept node from this same scan.
+        val underlyingHomeVisible = isRapidoHomeScreenTexts(singlePass.homeTexts)
 
         // Same fare/distance/drop parsing rules as before, but reuse entries
         // already collected by the single accessibility traversal.
@@ -2508,6 +2502,20 @@ object RapidoAdapter {
                 ?: findAcceptButton(
                     root
                 )
+
+        // A complete popup above Home can be processed; a Home-only screen
+        // or ambiguous popup must still be ignored, never clicked blindly.
+        if (RapidoEarlyReadGate.rejectHomeOverlay(
+                underlyingHomeVisible, orderData.totalFare,
+                orderData.pickupKm, orderData.dropKm, acceptBtn != null
+            )
+        ) {
+            return RapidoPopupValidation(
+                isValid = false,
+                failureReason = "Rapido Home without complete verified offer",
+                orderData = orderData
+            )
+        }
 
         if (acceptBtn == null) {
             return RapidoPopupValidation(

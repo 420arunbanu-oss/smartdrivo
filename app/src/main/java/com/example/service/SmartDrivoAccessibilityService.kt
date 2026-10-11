@@ -29,6 +29,7 @@ import com.example.engine.DecisionResult
 import com.example.engine.OlaAdapter
 import com.example.engine.OrderDataExtractor
 import com.example.engine.RapidoAdapter
+import com.example.engine.RapidoEarlyReadGate
 import com.example.engine.RapidoPopupValidation
 import com.example.engine.UberAdapter
 import com.example.model.AreaGroup
@@ -358,6 +359,9 @@ class SmartDrivoAccessibilityService : AccessibilityService() {
     // Keep only ONE newest Rapido rescan while parser is busy.
     @Volatile
     private var rapidoPendingRescan = false
+
+    // RAPIDO_PARTIAL_FAST_RECHECK_V1 - only one bounded worker per event burst.
+    @Volatile private var rapidoPartialPopupSeen = false
 
     private val rapidoProcessingLock = Any()
 
@@ -2423,6 +2427,11 @@ private val processingTimeoutRunnable = Runnable {
                     null
                 }
 
+            // AccessibilityEvent objects can be recycled after this callback.
+            // Capture event timing and type before launching the worker.
+            val rapidoEventType = event.eventType
+            val rapidoEventUptimeMs = event.eventTime
+
             val shouldLaunch =
                 synchronized(rapidoProcessingLock) {
 
@@ -2445,8 +2454,12 @@ private val processingTimeoutRunnable = Runnable {
 
                     var firstPass = true
                     var keepRunning = true
+                    var fastRetryCount = 0
 
                     while (keepRunning) {
+                        // Set before the scan; only real partial-offer evidence
+                        // inside this pass may request a bounded recheck.
+                        rapidoPartialPopupSeen = false
 
                         try {
                             processAccessibilityEvent(
@@ -2455,10 +2468,12 @@ private val processingTimeoutRunnable = Runnable {
                                     if (firstPass) directSource else null,
                                 eventType =
                                     if (firstPass) {
-                                        event.eventType
+                                        rapidoEventType
                                     } else {
                                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                                    }
+                                    },
+                                eventUptimeMs =
+                                    if (firstPass) rapidoEventUptimeMs else 0L
                             )
                         } catch (e: Exception) {
                             Log.e(
@@ -2469,18 +2484,35 @@ private val processingTimeoutRunnable = Runnable {
                         }
 
                         firstPass = false
-
+                        var delayForPartialMs = 0L
                         keepRunning =
                             synchronized(rapidoProcessingLock) {
-
-                                if (rapidoPendingRescan) {
-                                    rapidoPendingRescan = false
-                                    true
-                                } else {
-                                    isRapidoEventProcessing = false
-                                    false
+                                when {
+                                    rapidoPendingRescan -> {
+                                        rapidoPendingRescan = false
+                                        true
+                                    }
+                                    RapidoEarlyReadGate.mayRetry(
+                                        rapidoPartialPopupSeen,
+                                        fastRetryCount,
+                                        preferencesManager.isAutoAcceptEnabled
+                                    ) -> {
+                                        fastRetryCount++
+                                        delayForPartialMs =
+                                            RapidoEarlyReadGate.retryDelayMs(fastRetryCount)
+                                        true
+                                    }
+                                    else -> {
+                                        isRapidoEventProcessing = false
+                                        false
+                                    }
                                 }
                             }
+                        if (keepRunning && delayForPartialMs > 0L) {
+                            // Another event can still set rapidoPendingRescan;
+                            // do not use timer callbacks or queue infinite scans.
+                            delay(delayForPartialMs)
+                        }
                     }
                 }
             }
@@ -2624,10 +2656,35 @@ private val processingTimeoutRunnable = Runnable {
             }
         }
     }
+
+    // RAPIDO_READ_LATENCY_V1 - intentionally no fare/address logging.
+    private fun logRapidoReadLatency(
+        path: String, readStartedNs: Long, eventUptimeMs: Long
+    ) {
+        val readMs = (System.nanoTime() - readStartedNs) / 1_000_000.0
+        val eventAgeMs = if (eventUptimeMs > 0L) {
+            (android.os.SystemClock.uptimeMillis() - eventUptimeMs).coerceAtLeast(0L)
+        } else -1L
+        Log.i(TAG, "RAPIDO_READ_LATENCY_V1 path=$path readMs=" +
+            String.format(Locale.ENGLISH, "%.2f", readMs) +
+            " eventAgeMs=$eventAgeMs")
+    }
+
+    private fun isRapidoIncompleteValidation(v: RapidoPopupValidation): Boolean {
+        val data = v.orderData ?: return false
+        val tripIncomplete = data.dropKm == null || data.dropKm <= 0f
+        return (!v.isValid || tripIncomplete) &&
+            RapidoEarlyReadGate.hasPartialOrderSignal(
+                data.totalFare, data.pickupKm, data.dropKm,
+                v.acceptButton != null
+            )
+    }
+
     private fun processAccessibilityEvent(
         eventPkg: String,
         eventSource: AccessibilityNodeInfo?,
-        eventType: Int = 0
+        eventType: Int = 0,
+        eventUptimeMs: Long = 0L
     ) {
         // MASTER OFF: cancel queued ride processing.
         if (!preferencesManager.isAutoAcceptEnabled) {
@@ -2837,6 +2894,8 @@ private val processingTimeoutRunnable = Runnable {
                 isRapidoPackage(eventPkg)
 
         if (isRapidoPkg) {
+            val rapidoReadStartedNs = System.nanoTime()
+            var partialRapidoOfferSeenInPass = false
             Log.d("SmartDrivo", "Rapido event received: $eventType")
 
             // RAPIDO_EVENT_SOURCE_FIRST_V1
@@ -2861,6 +2920,9 @@ private val processingTimeoutRunnable = Runnable {
                     RapidoAdapter.validateRapidoOrderPopup(
                         directRapidoSource
                     )
+                if (isRapidoIncompleteValidation(sourceValidation)) {
+                    partialRapidoOfferSeenInPass = true
+                }
 
                 val sourceDropKm =
                     sourceValidation.orderData
@@ -2881,6 +2943,7 @@ private val processingTimeoutRunnable = Runnable {
                         "RAPIDO SOURCE SUBTREE FAST: complete order found"
                     )
 
+                    logRapidoReadLatency("source", rapidoReadStartedNs, eventUptimeMs)
                     handleRapidoOrder(
                         directRapidoSource,
                         sourceValidation
@@ -2915,8 +2978,13 @@ private val processingTimeoutRunnable = Runnable {
                     RapidoAdapter.validateRapidoOrderPopup(
                         directRapidoRoot
                     )
+                if (isRapidoIncompleteValidation(directValidation)) {
+                    partialRapidoOfferSeenInPass = true
+                }
 
-                if (directValidation.isValid) {
+                if (directValidation.isValid &&
+                    (directValidation.orderData?.dropKm ?: 0f) > 0f
+                ) {
 
                     lastValidRapidoPopupAt =
                         System.currentTimeMillis()
@@ -2926,6 +2994,7 @@ private val processingTimeoutRunnable = Runnable {
                         "RAPIDO SOURCE ROOT FALLBACK: genuine popup found"
                     )
 
+                    logRapidoReadLatency("root", rapidoReadStartedNs, eventUptimeMs)
                     handleRapidoOrder(
                         directRapidoRoot,
                         directValidation
@@ -2975,8 +3044,13 @@ private val processingTimeoutRunnable = Runnable {
             for (root in candidateRoots) {
                 val validation =
                     RapidoAdapter.validateRapidoOrderPopup(root)
+                if (isRapidoIncompleteValidation(validation)) {
+                    partialRapidoOfferSeenInPass = true
+                }
 
-                if (validation.isValid) {
+                if (validation.isValid &&
+                    (validation.orderData?.dropKm ?: 0f) > 0f
+                ) {
                     validatedRoot = root
                     validatedPopup = validation
                     break
@@ -2995,11 +3069,19 @@ private val processingTimeoutRunnable = Runnable {
                         "rootsScanned=${candidateRoots.size}"
                 )
 
+                logRapidoReadLatency("window", rapidoReadStartedNs, eventUptimeMs)
                 handleRapidoOrder(
                     validatedRoot,
                     validatedPopup
                 )
                 return
+            }
+
+            if (partialRapidoOfferSeenInPass) {
+                // The valid offer may be mid-render. Request at most two
+                // short scans; never click or log incomplete data.
+                rapidoPartialPopupSeen = true
+                Log.d(TAG, "RAPIDO_PARTIAL_READ_V1 pending bounded recheck")
             }
 
             val anyRapidoHome =
@@ -8220,6 +8302,7 @@ private val processingTimeoutRunnable = Runnable {
 
         // Verified popup and per-order guard already authorized this click.
         // Do not start a global 3-second lock for Rapido retries.
+        val rapidoClickStartedNs = System.nanoTime()
         var clicked = false
         // Primary: performAction(ACTION_CLICK) directly on accept node
         if (acceptNode.isClickable) {
@@ -8265,6 +8348,11 @@ private val processingTimeoutRunnable = Runnable {
                 return
             }
         }
+
+        val rapidoClickDispatchMs =
+            (System.nanoTime() - rapidoClickStartedNs) / 1_000_000.0
+        Log.i(TAG, "RAPIDO_CLICK_LATENCY_V1 attempt=$attemptNumber dispatchMs=" +
+            String.format(Locale.ENGLISH, "%.2f", rapidoClickDispatchMs))
 
         // ═══ STEP 4 - Verify: order popup gone in 200ms = ACCEPTED. Cooldown: 200ms max between attempts ═══
         serviceScope.launch(Dispatchers.IO) {
