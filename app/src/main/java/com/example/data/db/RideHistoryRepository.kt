@@ -101,7 +101,41 @@ class RideHistoryRepository(
                 dao.getByFingerprint(fingerprint)
             } else null
 
-            val existing = byBookingId ?: byFingerprint
+            // HISTORY_DEDUP_PHASE2A_V1
+            // Auto Priority sometimes extracts full details on one event and
+            // only destination on a second event AFTER click. Both represent
+            // the same trip if they have the exact same drop, arrive close
+            // together, and at least one is missing fare data.
+            // This runs only during background Room processing, not click.
+            val exactDrop = candidate.dropAddress
+                ?.trim()
+                ?.lowercase(Locale.ROOT)
+                .orEmpty()
+            val validDrop = exactDrop.isNotBlank() &&
+                exactDrop != "address unavailable" &&
+                exactDrop != "drop location" &&
+                exactDrop != "detected drop location"
+            val nearbyPartialPriority =
+                if (candidate.platform == Platform.RAPIDO && validDrop) {
+                    dao.getRecentPlatformHistory(Platform.RAPIDO.name, now - 5_000L)
+                        .firstOrNull { previous ->
+                            val sameDrop = previous.dropAddress
+                                .trim().lowercase(Locale.ROOT) == exactDrop
+                            val compatibleBooking =
+                                candidate.bookingId.isNullOrBlank() ||
+                                    previous.bookingId.isBlank() ||
+                                    previous.bookingId == candidate.bookingId
+                            val oneIncomplete =
+                                (candidate.fare ?: 0f) <= 0f || previous.fare <= 0f
+                            val priorityRecord =
+                                previous.decisionReasonCode.startsWith("AUTO_PRIORITY") ||
+                                    (previous.status == OrderStatus.PROCESSING.name &&
+                                        (now - previous.detectedAt) in 0L..1_200L)
+                            sameDrop && compatibleBooking && oneIncomplete && priorityRecord
+                        }
+                } else null
+
+            val existing = byBookingId ?: byFingerprint ?: nearbyPartialPriority
 
             if (existing != null) {
                 // HISTORY_DEDUP_FINAL_V2
@@ -148,10 +182,40 @@ class RideHistoryRepository(
                     return@withContext merged
                 }
 
-                // A booking ID uniquely identifies one real ride.
-                // Repeated events after finalization keep that final row.
-                if (isRecent && sameBookingId) {
-                    return@withContext existing
+                // HISTORY_DEDUP_PHASE2A_V1
+                // Finalized duplicate events should not create a second
+                // Accepted row. Booking-ID equality remains authoritative.
+                // Without a booking ID, require identical full fingerprint
+                // within 3 seconds or exact partial Auto Priority match.
+                val sameRecentFingerprint =
+                    byFingerprint != null && byFingerprint.id == existing.id &&
+                        (now - existing.detectedAt) in 0L..3_000L
+                val samePartialPriority =
+                    nearbyPartialPriority != null && nearbyPartialPriority.id == existing.id &&
+                        (now - existing.detectedAt) in 0L..5_000L
+
+                if (isRecent && (sameBookingId || sameRecentFingerprint || samePartialPriority)) {
+                    // Preserve the completed status and strong data; fill
+                    // missing fields if a later event recovers them.
+                    val incomingFare = candidate.fare ?: 0f
+                    val enriched = existing.copy(
+                        bookingId = existing.bookingId.ifBlank { candidate.bookingId.orEmpty() },
+                        fare = if (existing.fare > 0f) existing.fare else incomingFare,
+                        baseFare = if (existing.baseFare > 0f) existing.baseFare
+                            else candidate.baseFare?.takeIf { it > 0f } ?: incomingFare,
+                        tipAmount = if (existing.fare > 0f) existing.tipAmount
+                            else candidate.tipAmount ?: existing.tipAmount,
+                        pickupDistanceKm = if (existing.pickupDistanceKm > 0f)
+                            existing.pickupDistanceKm else candidate.pickupDistKm ?: 0f,
+                        dropDistanceKm = if (existing.dropDistanceKm > 0f)
+                            existing.dropDistanceKm else candidate.dropDistKm ?: 0f,
+                        dropAddress = existing.dropAddress.ifBlank { candidate.dropAddress.orEmpty() },
+                        dropArea = existing.dropArea.ifBlank { candidate.dropArea.orEmpty() },
+                        duplicateEventsIgnored = existing.duplicateEventsIgnored + 1
+                    )
+                    dao.update(enriched)
+                    Log.i("RideHistoryRepo", "Deduped finalized ride: ${enriched.id}")
+                    return@withContext enriched
                 }
             }
 

@@ -35,6 +35,10 @@ interface RideHistoryDao {
     @Query("SELECT * FROM ride_history WHERE platform = :platform AND status = 'PROCESSING' ORDER BY detectedAt DESC LIMIT 1")
     suspend fun getActiveProcessingRide(platform: String): RideHistoryEntity?
 
+    // HISTORY_DEDUP_PHASE2A_V1: bounded indexed lookup, not a full table scan.
+    @Query("SELECT * FROM ride_history WHERE platform = :platform AND detectedAt >= :since ORDER BY detectedAt DESC LIMIT 10")
+    suspend fun getRecentPlatformHistory(platform: String, since: Long): List<RideHistoryEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: RideHistoryEntity)
 

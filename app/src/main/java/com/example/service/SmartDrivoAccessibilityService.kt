@@ -1319,11 +1319,30 @@ private val processingTimeoutRunnable = Runnable {
                 }
             }
 
-        Log.w(TAG, "⏭️ [Direct Filter IGNORED] $reason")
+        // UNLIMITED_FAILURE_DETAILS_V1: history-only diagnostic after matching.
+        val detailedReason = buildString {
+            append(reason)
+            direct.extraFareRules.forEachIndexed { index, rule ->
+                if (!rule.enabled || !rule.isValid()) return@forEachIndexed
+                val failed = mutableListOf<String>()
+                if (fare == null || fare < rule.minimum) {
+                    failed += "Fare ${fare?.toInt() ?: 0} < min ${rule.minimum.toInt()}"
+                }
+                if (pickup == null || pickup > rule.maxPickupKm) {
+                    failed += "Pickup ${pickup ?: -1f} > max ${rule.maxPickupKm} km"
+                }
+                if (drop == null || drop > rule.maxDropKm) {
+                    failed += "Trip ${drop ?: -1f} > max ${rule.maxDropKm} km"
+                }
+                append("\nUnlimited Filter ${index + 1}: ")
+                append(if (failed.isEmpty()) "Matched" else failed.joinToString("; "))
+            }
+        }
+        Log.w(TAG, "[Direct Filter IGNORED] $detailedReason")
 
         return DirectFilterResult(
             OrderStatus.IGNORED,
-            reason
+            detailedReason
         )
     }
 
@@ -9556,6 +9575,19 @@ val isOrderStillVisible =
                     " | Trip ${km(trip)} ≤ ${km(settings.secondaryBothMaxDropDistanceKm)}"
                 )
             }
+        }
+        // HISTORY_REAL_MATCHED_UNLIMITED_V1
+        // Only claim a specific unlimited rule when the prior home/secondary
+        // paths do NOT qualify. This prevents impossible "2.7 <= 1.7" text.
+        val matchedUnlimitedIndex = settings.extraFareRules.indexOfFirst { rule ->
+            rule.matches(candidate.fare, candidate.pickupDistKm, candidate.dropDistKm)
+        }
+        if (!homeMatched && !secondaryMatched && matchedUnlimitedIndex >= 0) {
+            val matchedRule = settings.extraFareRules[matchedUnlimitedIndex]
+            return "Mode: Order Filter Unlimited - Filter ${matchedUnlimitedIndex + 1}" +
+                "\nFare ₹${fare.toInt()} >= ₹${matchedRule.minimum.toInt()}" +
+                " | Pickup ${km(pickup)} <= ${km(matchedRule.maxPickupKm)}" +
+                " | Trip ${km(trip)} <= ${km(matchedRule.maxDropKm)}"
         }
         return when (settings.filterMode) {
             com.example.model.FilterMode.FARE_ONLY -> {
