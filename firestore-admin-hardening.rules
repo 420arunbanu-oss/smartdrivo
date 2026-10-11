@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function authenticated() { return request.auth != null; }
+    function adminDocExists() { return authenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function isAdmin() {
+      return adminDocExists()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
+    }
+
+    match /users/{userId} {
+      allow read: if authenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if authenticated() && (
+        (request.auth.uid == userId &&
+          (!request.resource.data.keys().hasAny(['isAdmin', 'isApproved']) ||
+           (request.resource.data.isAdmin == false && request.resource.data.isApproved == false)))
+        || isAdmin()
+      );
+      allow update: if authenticated() && (
+        isAdmin() ||
+        (request.auth.uid == userId &&
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['isAdmin', 'isApproved', 'plan', 'planPrice', 'planExpireMillis', 'isActive'])
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if authenticated() &&
+        (isAdmin() || (resource != null && resource.data.uid == request.auth.uid));
+      allow create: if authenticated() && (
+        isAdmin() ||
+        (request.resource.data.uid == request.auth.uid &&
+         request.resource.data.status == 'PENDING' &&
+         request.resource.data.utrNumber is string &&
+         request.resource.data.utrNumber.matches('^[0-9]{12}$') &&
+         request.resource.data.paymentId == paymentId &&
+         paymentId == 'UTR-' + request.resource.data.utrNumber)
+      );
+      allow update: if isAdmin() && (
+        request.resource.data.status != 'APPROVED' ||
+        resource.data.status == 'APPROVED' ||
+        (request.resource.data.utrNumber is string &&
+         request.resource.data.uid is string &&
+         getAfter(/databases/$(database)/documents/paymentUtrs/$(request.resource.data.utrNumber)).data.paymentId == paymentId &&
+         getAfter(/databases/$(database)/documents/paymentUtrs/$(request.resource.data.utrNumber)).data.uid == request.resource.data.uid)
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /paymentUtrs/{utr} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && request.resource.data.utrNumber == utr &&
+        request.resource.data.paymentId is string && request.resource.data.uid is string;
+      allow update, delete: if false;
+    }
+    match /settings/{settingId} {
+      allow read: if authenticated();
+      allow write: if isAdmin();
+    }
+    match /logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
