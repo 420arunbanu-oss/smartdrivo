@@ -34,6 +34,62 @@ class RapidoOfferParserRegressionTest {
         assertEquals("Shamshabad - Ismail Nagar, Chandrayangutta, Hyderabad", parsed.dropAddress)
     }
 
+    @Test fun reversedTextOrderUsesVerifiedPickupAndTripIds() {
+        val guessed = RapidoAdapter.extractOrderDataFromTexts(
+            listOf("â‚¹128", "6.5 km", "0.9 km", "Shamshabad, Hyderabad"),
+            skipPickupAddress = true
+        )
+        // The raw Accessibility list came in reverse order, but node IDs
+        // identify which distance belongs to each field.
+        val corrected = RapidoAdapter.reconcileKmByViewId(
+            guessed,
+            listOf(
+                "6.5 km" to "com.rapido.rider:id/tv_trip_distance",
+                "0.9 km" to "com.rapido.rider:id/tv_pickup_distance"
+            )
+        )
+        assertEquals(0.9f, corrected.pickupKm ?: -1f, 0.001f)
+        assertEquals(6.5f, corrected.dropKm ?: -1f, 0.001f)
+    }
+
+    @Test fun oneVerifiedTripIdCanRepairSwappedPair() {
+        val guessed = RapidoAdapter.extractOrderDataFromTexts(
+            listOf("â‚¹128", "6.5 km", "0.9 km", "Dabirpura, Hyderabad"),
+            skipPickupAddress = true
+        )
+        val corrected = RapidoAdapter.reconcileKmByViewId(
+            guessed,
+            listOf("6.5 km" to "com.rapido.rider:id/drop_distance")
+        )
+        assertEquals(0.9f, corrected.pickupKm ?: -1f, 0.001f)
+        assertEquals(6.5f, corrected.dropKm ?: -1f, 0.001f)
+    }
+
+    @Test fun unknownViewIdsCannotRewriteDistances() {
+        val guessed = RapidoAdapter.extractOrderDataFromTexts(
+            listOf("â‚¹128", "0.9 km", "6.5 km"), skipPickupAddress = true
+        )
+        val unchanged = RapidoAdapter.reconcileKmByViewId(
+            guessed, listOf("6.5 km" to "com.rapido.rider:id/offer_card")
+        )
+        assertEquals(guessed.pickupKm, unchanged.pickupKm)
+        assertEquals(guessed.dropKm, unchanged.dropKm)
+    }
+
+    @Test fun conflictingTaggedDistancesNeverBecomeFalseKnownMatch() {
+        val guessed = RapidoAdapter.extractOrderDataFromTexts(
+            listOf("â‚¹128", "0.9 km", "6.5 km"), skipPickupAddress = true
+        )
+        val uncertain = RapidoAdapter.reconcileKmByViewId(
+            guessed,
+            listOf(
+                "6.5 km" to "com.rapido.rider:id/drop_distance",
+                "7.2 km" to "com.rapido.rider:id/tv_drop_distance"
+            )
+        )
+        assertEquals(null, uncertain.dropKm)
+    }
+
     @Test fun separateTripAndDistanceLinesStillParse() {
         val parsed = RapidoAdapter.extractOrderDataFromTexts(
             listOf("â‚¹130", "Pickup", "0.6 km", "Trip", "3.7 km", "OFF",

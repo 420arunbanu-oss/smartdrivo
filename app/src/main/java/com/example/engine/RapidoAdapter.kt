@@ -685,6 +685,63 @@ object RapidoAdapter {
      * - Extract drop address (text under second km node)
      * - Do NOT use "Auto", "Services", "Nearby" as addresses
      */
+    // RAPIDO_LABELED_KM_VIEW_IDS_V2
+    // Rapido can emit Trip before Pickup in its Accessibility text order.
+    // Position-based parsing then swaps the two distances. Prefer explicit
+    // trusted distance view IDs from the SAME already-collected tree nodes.
+    // Unknown/contradictory IDs never fabricate a successful filter match.
+    internal fun reconcileKmByViewId(
+        data: RapidoOrderData,
+        nodes: List<Pair<String, String?>>
+    ): RapidoOrderData {
+        val labeledPickup = linkedSetOf<Float>()
+        val labeledTrip = linkedSetOf<Float>()
+        for ((rawText, rawId) in nodes) {
+            val id = rawId?.substringAfter(":id/")?.lowercase() ?: continue
+            // Exclude UI controls, address strings and timers.
+            if (listOf("address", "location", "timer", "time", "price", "fare", "amount")
+                    .any { id.contains(it) }) continue
+            val kmValues = KM_REGEX.findAll(rawText)
+                .mapNotNull { it.groupValues.getOrNull(1)?.toFloatOrNull() }
+                .filter { it.isFinite() && it > 0f }
+                .toList()
+            // Containers with multiple distances do not identify one field.
+            if (kmValues.size != 1) continue
+            val pickupId = id.contains("pickup") || id.contains("pick_up") ||
+                id.contains("source_distance") || id.contains("distance_to_pickup")
+            val tripId = id.contains("trip") || id.contains("drop") ||
+                id.contains("destination_distance") || id.contains("dest_distance")
+            if (pickupId && !tripId) labeledPickup.add(kmValues.single())
+            if (tripId && !pickupId) labeledTrip.add(kmValues.single())
+        }
+
+        // Conflicting values from the same field are ambiguous: fail closed.
+        if (labeledPickup.size > 1 || labeledTrip.size > 1) {
+            return data.copy(
+                pickupKm = if (labeledPickup.size > 1) null
+                    else labeledPickup.firstOrNull() ?: data.pickupKm,
+                dropKm = if (labeledTrip.size > 1) null
+                    else labeledTrip.firstOrNull() ?: data.dropKm
+            )
+        }
+        val pickupHint = labeledPickup.firstOrNull()
+        val tripHint = labeledTrip.firstOrNull()
+        if (pickupHint == null && tripHint == null) return data
+
+        fun near(a: Float?, b: Float?) =
+            a != null && b != null && kotlin.math.abs(a - b) < 0.01f
+
+        var pickup = pickupHint ?: data.pickupKm
+        var trip = tripHint ?: data.dropKm
+        if (pickupHint != null && tripHint == null && near(data.dropKm, pickupHint)) {
+            trip = if (!near(data.pickupKm, pickupHint)) data.pickupKm else null
+        }
+        if (tripHint != null && pickupHint == null && near(data.pickupKm, tripHint)) {
+            pickup = if (!near(data.dropKm, tripHint)) data.dropKm else null
+        }
+        return data.copy(pickupKm = pickup, dropKm = trip)
+    }
+
     fun extractOrderData(root: AccessibilityNodeInfo, skipHomeCheck: Boolean = false, skipPickupAddress: Boolean = false): RapidoOrderData {
         val rootPkg = root.packageName?.toString().orEmpty()
         if (isSmartDrivoPackage(rootPkg) || (!skipHomeCheck && isRapidoHomeScreen(root))) {
@@ -748,7 +805,9 @@ object RapidoAdapter {
             rawDrop
         }
 
-        return data.copy(
+        return reconcileKmByViewId(
+            data, validEntries.map { it.text to it.viewId }
+        ).copy(
             pickupAddress = finalPickup,
             dropAddress = finalDrop,
             bookingId = bookingId
@@ -2345,7 +2404,9 @@ object RapidoAdapter {
                 rawDrop
             }
 
-        return data.copy(
+        return reconcileKmByViewId(
+            data, validEntries.map { it.text to it.viewId }
+        ).copy(
             pickupAddress =
                 finalPickup,
             dropAddress =
