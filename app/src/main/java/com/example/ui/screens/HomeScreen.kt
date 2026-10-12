@@ -15,6 +15,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -79,6 +85,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -129,6 +137,30 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.keepFilterFieldVisible(): Modifier = composed {
+    val requester = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
+
+    this.bringIntoViewRequester(requester)
+        .onFocusChanged { state ->
+            if (state.hasFocus) {
+                scope.launch {
+                    delay(200L)
+                    try {
+                        requester.bringIntoView()
+                    } catch (_: IllegalStateException) {
+                    }
+
+                    delay(200L)
+                    try {
+                        requester.bringIntoView()
+                    } catch (_: IllegalStateException) {
+                    }
+                }
+            }
+        }
+}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -395,13 +427,16 @@ val goToAreas by prefs.goToAreas.collectAsState()
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {},
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = LightBackground
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding()
                 .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { Spacer(modifier = Modifier.height(10.dp)) }
@@ -1347,7 +1382,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             ),
                                         singleLine = true,
                                         modifier =
-                                            Modifier.weight(1f),
+                                            Modifier.weight(1f).keepFilterFieldVisible(),
                                         shape =
                                             RoundedCornerShape(
                                                 10.dp
@@ -1399,7 +1434,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             ),
                                         singleLine = true,
                                         modifier =
-                                            Modifier.weight(1f),
+                                            Modifier.weight(1f).keepFilterFieldVisible(),
                                         shape =
                                             RoundedCornerShape(
                                                 10.dp
@@ -1463,7 +1498,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             ),
                                         singleLine = true,
                                         modifier =
-                                            Modifier.weight(1f),
+                                            Modifier.weight(1f).keepFilterFieldVisible(),
                                         shape =
                                             RoundedCornerShape(
                                                 10.dp
@@ -1515,7 +1550,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             ),
                                         singleLine = true,
                                         modifier =
-                                            Modifier.weight(1f),
+                                            Modifier.weight(1f).keepFilterFieldVisible(),
                                         shape =
                                             RoundedCornerShape(
                                                 10.dp
@@ -1540,16 +1575,14 @@ val goToAreas by prefs.goToAreas.collectAsState()
 
                             FilterMode.BOTH -> {
 
-                                // Keep BOTH compact: all four inputs
-                                // stay in one row.
-                                Row(
-                                    modifier =
-                                        Modifier.fillMaxWidth(),
-                                    horizontalArrangement =
-                                        Arrangement.spacedBy(
-                                            5.dp
-                                        )
+                                // Wider input fields for small displays.
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                    ) {
                                     OutlinedTextField(
                                         value = minFareInput,
                                         onValueChange = { input ->
@@ -1570,7 +1603,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         label = {
                                             Text(
                                                 "Min ₹",
-                                                fontSize = 8.sp,
+                                                fontSize = 10.sp,
                                                 maxLines = 1
                                             )
                                         },
@@ -1581,7 +1614,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             ),
                                         singleLine = true,
                                         modifier =
-                                            Modifier.weight(1f),
+                                            Modifier.weight(1f).keepFilterFieldVisible(),
                                         shape =
                                             RoundedCornerShape(
                                                 9.dp
@@ -1622,7 +1655,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         label = {
                                             Text(
                                                 "Max ₹",
-                                                fontSize = 8.sp,
+                                                fontSize = 10.sp,
                                                 maxLines = 1
                                             )
                                         },
@@ -1633,7 +1666,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             ),
                                         singleLine = true,
                                         modifier =
-                                            Modifier.weight(1f),
+                                            Modifier.weight(1f).keepFilterFieldVisible(),
                                         shape =
                                             RoundedCornerShape(
                                                 9.dp
@@ -1654,6 +1687,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                                 )
                                     )
 
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                    ) {
                                     OutlinedTextField(
                                         value = maxPickupInput,
                                         onValueChange = { input ->
@@ -1674,7 +1712,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         label = {
                                             Text(
                                                 "Pickup",
-                                                fontSize = 8.sp,
+                                                fontSize = 10.sp,
                                                 maxLines = 1
                                             )
                                         },
@@ -1685,7 +1723,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             ),
                                         singleLine = true,
                                         modifier =
-                                            Modifier.weight(1f),
+                                            Modifier.weight(1f).keepFilterFieldVisible(),
                                         shape =
                                             RoundedCornerShape(
                                                 9.dp
@@ -1726,7 +1764,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         label = {
                                             Text(
                                                 "Drop",
-                                                fontSize = 8.sp,
+                                                fontSize = 10.sp,
                                                 maxLines = 1
                                             )
                                         },
@@ -1737,7 +1775,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             ),
                                         singleLine = true,
                                         modifier =
-                                            Modifier.weight(1f),
+                                            Modifier.weight(1f).keepFilterFieldVisible(),
                                         shape =
                                             RoundedCornerShape(
                                                 9.dp
@@ -1757,6 +1795,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                                         TextDarkPrimary
                                                 )
                                     )
+                                }
                                 }
                             }
                         }

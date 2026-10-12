@@ -15,6 +15,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -47,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -464,7 +467,9 @@ fun SmartDrivoApp(
     val mainRoutes = remember {
         setOf(Routes.HOME, Routes.SETTINGS, Routes.AREA_MANAGER, Routes.ORDER_HISTORY, Routes.PROFILE)
     }
+    val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val showBottomBar =
+        !keyboardVisible &&
         currentRoute in mainRoutes &&
             isLoggedIn &&
             !isSecurityBlocked &&
