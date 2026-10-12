@@ -100,4 +100,30 @@ class RapidoOfferParserRegressionTest {
         assertEquals(3.7f, parsed.dropKm ?: -1f, 0.001f)
         assertEquals("Dhoolpet - Hara Darwaza, Hyderabad", parsed.dropAddress)
     }
+
+    @Test fun conflictingFarePairsDuringBurstAreNotInventedAsSingleOffer() {
+        val parsed = RapidoAdapter.extractOrderDataFromTexts(
+            listOf("₹104 +₹22", "₹51 +₹9", "Pickup 0.7 km", "Trip 2.7 km"),
+            skipPickupAddress = true
+        )
+        assertEquals(0f, parsed.totalFare, 0.001f)
+    }
+
+    @Test fun distinctUnlabeledKmFromOverlappingCardsAreNotGuessed() {
+        val parsed = RapidoAdapter.extractOrderDataFromTexts(
+            listOf("₹126", "0.7 km", "2.7 km", "1.3 km",
+                "Falaknuma, Hyderabad"), skipPickupAddress = true
+        )
+        assertEquals(null, parsed.pickupKm)
+        assertEquals(null, parsed.dropKm)
+    }
+
+    @Test fun conflictingPickupLabelsAreNotReadAsOneDistance() {
+        val parsed = RapidoAdapter.extractOrderDataFromTexts(
+            listOf("₹60", "Pickup 0.3 km", "Pickup 0.7 km",
+                "Trip 1.7 km", "Charminar, Hyderabad"), skipPickupAddress = true
+        )
+        assertEquals(null, parsed.pickupKm)
+        assertEquals(1.7f, parsed.dropKm ?: -1f, 0.001f)
+    }
 }

@@ -388,10 +388,12 @@ class PreferencesManager(private val context: Context) {
     }
 
     fun notifyOrderHistoryChanged() {
-        val latest = loadOrderHistory()
-        _sharedOrderHistory.value = latest
+        // The active Room Flow handles live insert/update notifications.
+        // Avoid re-parsing 200 stale legacy JSON records on each burst event.
         val storedTotal = prefs.getInt(KEY_TOTAL_ACCEPTED, 0)
-        val historyAccepted = latest.count { it.status == OrderStatus.ACCEPTED }
+        val historyAccepted = _sharedOrderHistory.value.count {
+            it.status == OrderStatus.ACCEPTED
+        }
         val count = maxOf(storedTotal, historyAccepted)
         _sharedTotalAccepted.value = count
         _totalAccepted.value = count

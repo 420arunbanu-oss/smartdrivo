@@ -911,8 +911,14 @@ object RapidoAdapter {
         val bestPair =
             verifiedPairs.maxByOrNull { it.third }
 
+        // RAPIDO_BURST_FARE_GUARD_V1: distinct base+tip pairs on a
+        // non-bundle screen can be two overlapping offers. Wait for a
+        // clean next event instead of trusting a mixed fare.
+        val conflictingFarePairs = !isBundleOrder &&
+            texts.any { KM_REGEX.containsMatchIn(it) } &&
+            verifiedPairs.map { it.first to it.second }.distinct().size > 1
         totalFare =
-            maxOf(
+            if (conflictingFarePairs) 0f else maxOf(
                 highestVisible,
                 bestPair?.third ?: 0f
             )
@@ -1026,6 +1032,30 @@ object RapidoAdapter {
             }
         }
 
+        // RAPIDO_BURST_OFFER_KM_GUARD_V1: old/new cards can briefly
+        // expose contradictory explicit Pickup/Trip labels in one scan.
+        val labeledPickupValues = linkedSetOf<Float>()
+        val labeledTripValues = linkedSetOf<Float>()
+        for (i in texts.indices) {
+            val line = texts[i].trim()
+            fun addValid(set: MutableSet<Float>, raw: String?) {
+                raw?.toFloatOrNull()?.takeIf { it.isFinite() && it > 0f }?.let { set.add(it) }
+            }
+            pickupLabeled.findAll(line).forEach { addValid(labeledPickupValues, it.groupValues[1]) }
+            tripLabeled.findAll(line).forEach { addValid(labeledTripValues, it.groupValues[1]) }
+            tripReverse.findAll(line).forEach { addValid(labeledTripValues, it.groupValues[1]) }
+            if (standalonePickup.matches(line)) {
+                addValid(labeledPickupValues,
+                    texts.getOrNull(i + 1)?.let { KM_REGEX.find(it)?.groupValues?.getOrNull(1) })
+            }
+            if (standaloneTrip.matches(line)) {
+                addValid(labeledTripValues,
+                    texts.getOrNull(i + 1)?.let { KM_REGEX.find(it)?.groupValues?.getOrNull(1) })
+            }
+        }
+        val conflictingPickupLabels = labeledPickupValues.size > 1
+        val conflictingTripLabels = labeledTripValues.size > 1
+
         // BUG 1: If pickup distance is "Nearby" or unknown, do NOT assign a numeric value to pickupKm!
         val hasNearby = texts.any { it.trim().equals("nearby", ignoreCase = true) || it.contains("nearby", ignoreCase = true) }
         var pickupKm: Float?
@@ -1050,6 +1080,19 @@ object RapidoAdapter {
         if (dropKm == null) {
             dropKm = OrderDataExtractor.extractDropDistance(texts, texts.joinToString(" "))
         }
+
+        // >2 different unlabeled km values on a non-bundle card can
+        // mean overlapping offers. Don't guess; view IDs may recover
+        // the verified pair without an extra accessibility tree walk.
+        if (!isBundleOrder && !hasNearby &&
+            explicitPickupKm == null && explicitDropKm == null &&
+            orderedKm.map { it.second }.distinct().size > 2
+        ) {
+            pickupKm = null
+            dropKm = null
+        }
+        if (conflictingPickupLabels) pickupKm = null
+        if (conflictingTripLabels) dropKm = null
 
         // A Bundle Order can contain multiple pickup/trip distance pairs:
         // Order 1 pickup, Order 1 trip, Order 2 pickup, Order 2 trip...

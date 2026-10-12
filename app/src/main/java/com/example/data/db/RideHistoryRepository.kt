@@ -50,7 +50,8 @@ class RideHistoryRepository(
         items: List<OrderHistoryItem>
     ) = withContext(ioDispatcher) {
         items.forEach { item ->
-            dao.insert(
+            // Legacy import may never replace a newer real-time Room row.
+            dao.insertIfAbsent(
                 RideHistoryEntity.fromOrderHistoryItem(item)
             )
         }
@@ -98,7 +99,11 @@ class RideHistoryRepository(
 
             // Check duplicate by fingerprint
             val byFingerprint = if (byBookingId == null) {
-                dao.getByFingerprint(fingerprint)
+                dao.getByFingerprint(fingerprint)?.takeIf { previous ->
+                    val oldDrop = previous.dropAddress.trim().lowercase(Locale.ROOT)
+                    val newDrop = candidate.dropAddress?.trim()?.lowercase(Locale.ROOT).orEmpty()
+                    oldDrop.isBlank() || newDrop.isBlank() || oldDrop == newDrop
+                }
             } else null
 
             // HISTORY_DEDUP_PHASE2A_V1
@@ -459,8 +464,11 @@ class RideHistoryRepository(
         val pickup10 = ((candidate.pickupDistKm ?: 0f) * 10).toInt()
         val drop10 = ((candidate.dropDistKm ?: 0f) * 10).toInt()
         val pickupClean = (candidate.pickupAddress ?: "").take(12).replace(Regex("[^A-Za-z0-9]"), "")
-        val dropClean = (candidate.dropAddress ?: "").take(12).replace(Regex("[^A-Za-z0-9]"), "")
-        return "${candidate.platform}_${fareInt}_${pickup10}_${drop10}_${pickupClean}_${dropClean}"
+        // A 12-character drop prefix collides for many Charminar offers.
+        val fullDrop = candidate.dropAddress.orEmpty().trim().lowercase(Locale.ROOT)
+        val dropClean = fullDrop.replace(Regex("[^a-z0-9]"), "").take(48)
+        val dropSignature = fullDrop.hashCode().toUInt().toString(16)
+        return "${candidate.platform}_${fareInt}_${pickup10}_${drop10}_${pickupClean}_${dropClean}_${dropSignature}"
     }
 
     private fun formatDateTime(timestamp: Long): Pair<String, String> {

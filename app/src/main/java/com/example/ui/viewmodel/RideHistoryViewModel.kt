@@ -27,15 +27,15 @@ class RideHistoryViewModel(
             // HISTORY_PERSIST_ALL_DAYS_V2
             // History supports Today / Yesterday / Last 7 Days.
             // Opening History must never delete previous-day rows.
-            val legacyHistory =
-                PreferencesManager(
+            // Live Room is authoritative. Restore old JSON only for a new DB;
+            // never replay stale copies on every History screen opening.
+            if (repository.getAllHistoryDirect().isEmpty()) {
+                val legacyHistory = PreferencesManager(
                     getApplication<Application>()
                 ).orderHistory.value
-
-            if (legacyHistory.isNotEmpty()) {
-                repository.restoreHistoryItems(
-                    legacyHistory
-                )
+                if (legacyHistory.isNotEmpty()) {
+                    repository.restoreHistoryItems(legacyHistory)
+                }
             }
 
             // Convert any previously stuck PROCESSING records

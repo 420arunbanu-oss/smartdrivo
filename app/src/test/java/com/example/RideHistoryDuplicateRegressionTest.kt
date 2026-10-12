@@ -119,4 +119,23 @@ class RideHistoryDuplicateRegressionTest {
         history.onOrderDetected(order(71f))
         assertEquals(2, history.getAllHistoryDirect().size)
     }
+
+    @Test fun rapidOffersWithSameDropPrefixAreNeverMerged() = runBlocking {
+        val firstDrop = "Charminar - Falaknuma, Char Chaman Colony, Hyderabad"
+        val nextDrop = "Charminar - Agarwal Junior College, Patel Market, Hyderabad"
+        val first = history.onOrderDetected(order(126f, firstDrop))
+        val next = history.onOrderDetected(order(126f, nextDrop))
+        assertTrue(first.id != next.id)
+        assertEquals(2, history.getAllHistoryDirect().size)
+    }
+
+    @Test fun legacyRestoreCannotOverwriteFinalRoomDecision() = runBlocking {
+        val first = history.onOrderDetected(order(126f, "Falaknuma, Hyderabad"))
+        history.onOrderDecision(
+            first.id, OrderStatus.IGNORED, "CRITERIA_NOT_MET", "Filters didn't match"
+        )
+        history.restoreHistoryItems(listOf(first.toOrderHistoryItem()))
+        assertEquals(OrderStatus.IGNORED.name, history.getById(first.id)?.status)
+        assertEquals(1, history.getAllHistoryDirect().size)
+    }
 }

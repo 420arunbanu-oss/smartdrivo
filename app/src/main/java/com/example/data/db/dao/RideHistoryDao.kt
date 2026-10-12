@@ -42,6 +42,9 @@ interface RideHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: RideHistoryEntity)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(entity: RideHistoryEntity): Long
+
     @Update
     suspend fun update(entity: RideHistoryEntity)
 
