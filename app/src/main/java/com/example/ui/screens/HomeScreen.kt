@@ -847,8 +847,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                 }
             }
 
-            // 2. AUTO-ACCEPT ORDERS — COMPACT V2
+            // SMARTDRIVO_ASSISTANCE_UI_V1
+            // Visual redesign only. Existing toggle handler is reused.
             item {
+                val assistanceActive = settings.isAutoAcceptActive
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -856,72 +859,145 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             handleToggleAutoAccept(!settings.isAutoAcceptActive)
                         },
                     colors = CardDefaults.cardColors(
-                        containerColor = if (settings.isAutoAcceptActive) StatusActiveGreenBg else StatusInactiveRedBg
+                        containerColor = Color(0xFF1C2B4B)
                     ),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(
-                        1.dp,
-                        if (settings.isAutoAcceptActive) StatusActiveGreenBorder else StatusInactiveRedBorder
+                        1.dp, Color(0xFF354669)
                     )
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = 14.dp,
+                            vertical = 12.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Box(
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "SMARTDRIVO ASSISTANT",
+                                color = Color(0xFFBBC9E9),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Surface(
+                                color = if (assistanceActive)
+                                    Color(0xFF116B64)
+                                else
+                                    Color(0xFF40516F),
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Text(
+                                    text = if (assistanceActive)
+                                        "ACTIVE"
+                                    else
+                                        "PAUSED",
+                                    modifier = Modifier.padding(
+                                        horizontal = 11.dp,
+                                        vertical = 6.dp
+                                    ),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .background(
+                                        Color(0xFF38568D),
+                                        RoundedCornerShape(12.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.ElectricBolt,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(27.dp),
+                                    tint = Color.White
+                                )
+                            }
+
+                            Spacer(Modifier.width(10.dp))
+
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = "Smart Assistance",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    maxLines = 1
+                                )
+
+                                Text(
+                                    text = if (assistanceActive)
+                                        "Auto-Accept running"
+                                    else
+                                        "Auto-Accept paused",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFC1CEE6),
+                                    maxLines = 1
+                                )
+                            }
+
+                            Switch(
+                                checked = assistanceActive,
+                                onCheckedChange = { enabled ->
+                                    handleToggleAutoAccept(enabled)
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = BluePrimary,
+                                    uncheckedThumbColor = Color.White,
+                                    uncheckedTrackColor = Color(0xFF5F7090),
+                                    uncheckedBorderColor = Color(0xFFA6B6D3)
+                                )
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                handleToggleAutoAccept(!settings.isAutoAcceptActive)
+                            },
                             modifier = Modifier
-                                .size(30.dp)
-                                .background(
-                                    if (settings.isAutoAcceptActive) Color(0xFFDCFCE7) else Color(0xFFFFEBEE),
-                                    RoundedCornerShape(8.dp)
-                                ),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .height(46.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = BluePrimary,
+                                contentColor = Color.White
+                            )
                         ) {
                             Icon(
                                 Icons.Default.ElectricBolt,
                                 contentDescription = null,
-                                tint = if (settings.isAutoAcceptActive) StatusActiveGreen else StatusInactiveRed,
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(19.dp)
                             )
-                        }
 
-                        Spacer(modifier = Modifier.width(9.dp))
+                            Spacer(Modifier.width(8.dp))
 
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
                             Text(
-                                text = "Auto-Accept Orders",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextDarkPrimary,
-                                maxLines = 1
-                            )
-                            Text(
-                                text = if (settings.isAutoAcceptActive)
-                                    "ACTIVE • Ready"
+                                text = if (assistanceActive)
+                                    "STOP ASSISTANCE"
                                 else
-                                    "INACTIVE • Paused",
-                                fontSize = 11.sp,
-                                color = if (settings.isAutoAcceptActive) StatusActiveGreen else TextDarkSecondary,
-                                maxLines = 1
+                                    "START ASSISTANCE",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
                             )
                         }
-
-                        Switch(
-                            checked = settings.isAutoAcceptActive,
-                            onCheckedChange = { shouldEnable ->
-                                handleToggleAutoAccept(shouldEnable)
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = BluePrimary,
-                                uncheckedThumbColor = Color.White,
-                                uncheckedTrackColor = Color(0xFFBDBDBD)
-                            )
-                        )
                     }
                 }
             }
@@ -1052,149 +1128,93 @@ val goToAreas by prefs.goToAreas.collectAsState()
                     colors = CardDefaults.cardColors(
                         containerColor =
                             if (settings.isPrimaryFilterEnabled)
-                                BlueContainer
+                                Color(0xFFF7FAFF)
                             else
-                                CardBackground
+                                Color.White
                     ),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(
                         1.dp,
                         if (settings.isPrimaryFilterEnabled)
-                            BluePrimary
+                            Color(0xFFD5E6F8)
                         else
                             CardBorderDefault
                     )
                 ) {
                     Column(
-                        modifier = Modifier.padding(9.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                        modifier = Modifier.padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
 
-                        // Header
+                        // GLOBAL_FILTER_HOME_UI_V1
+                        // Original filter values and toggle logic preserved.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement =
-                                Arrangement.SpaceBetween,
-                            verticalAlignment =
-                                Alignment.CenterVertically
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Row(
-                                    verticalAlignment =
-                                        Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .background(
-                                                Color.White.copy(
-                                                    alpha = 0.75f
-                                                ),
-                                                RoundedCornerShape(8.dp)
-                                            )
-                                            .padding(
-                                                horizontal = 7.dp,
-                                                vertical = 3.dp
-                                            )
-                                    ) {
-                                        Text(
-                                            text = "FILTER 1",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color =
-                                                if (settings.isPrimaryFilterEnabled)
-                                                    BluePrimary
-                                                else
-                                                    TextDarkSecondary
-                                        )
-                                    }
-
-                                    Spacer(
-                                        modifier =
-                                            Modifier.width(7.dp)
-                                    )
-
-                                    Text(
-                                        text = "Order Filter 1",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = TextDarkPrimary
-                                    )
-                                }
-
-                                Spacer(
-                                    modifier =
-                                        Modifier.height(2.dp)
+                                Text(
+                                    text = "Global Filter",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = TextDarkPrimary
                                 )
 
                                 Text(
-                                    text = "One ride option",
-                                    fontSize = 10.sp,
+                                    text = "Fare / Distance / Both",
+                                    fontSize = 9.sp,
                                     color = TextDarkSecondary
                                 )
                             }
 
                             Row(
-                                verticalAlignment =
-                                    Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text =
-                                        if (settings.isPrimaryFilterEnabled)
-                                            "ON"
-                                        else
-                                            "OFF",
+                                    text = if (settings.isPrimaryFilterEnabled)
+                                        "ON"
+                                    else
+                                        "OFF",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color =
-                                        if (settings.isPrimaryFilterEnabled)
-                                            BluePrimary
-                                        else
-                                            TextDarkSecondary
+                                    color = if (settings.isPrimaryFilterEnabled)
+                                        BluePrimary
+                                    else
+                                        TextDarkSecondary
                                 )
 
-                                Spacer(
-                                    modifier =
-                                        Modifier.width(5.dp)
-                                )
+                                Spacer(Modifier.width(5.dp))
 
                                 Switch(
-                                    checked =
-                                        settings.isPrimaryFilterEnabled,
+                                    checked = settings.isPrimaryFilterEnabled,
                                     onCheckedChange = { enabled ->
                                         prefs.saveAppSettings(
                                             settings.copy(
-                                                isPrimaryFilterEnabled =
-                                                    enabled
+                                                isPrimaryFilterEnabled = enabled
                                             )
                                         )
 
                                         coroutineScope.launch {
-                                            snackbarHostState
-                                                .showSnackbar(
-                                                    if (enabled)
-                                                        "Order Filter 1 ON"
-                                                    else
-                                                        "Order Filter 1 OFF"
-                                                )
+                                            snackbarHostState.showSnackbar(
+                                                if (enabled)
+                                                    "Global Filter ON"
+                                                else
+                                                    "Global Filter OFF"
+                                            )
                                         }
                                     },
-                                    colors =
-                                        SwitchDefaults.colors(
-                                            checkedThumbColor =
-                                                Color.White,
-                                            checkedTrackColor =
-                                                BluePrimary,
-                                            uncheckedThumbColor =
-                                                Color.White,
-                                            uncheckedTrackColor =
-                                                Color(0xFFBDBDBD)
-                                        )
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = BluePrimary,
+                                        uncheckedThumbColor = Color.White,
+                                        uncheckedTrackColor = Color(0xFFBDBDBD)
+                                    )
                                 )
                             }
                         }
-
                         // Fare / Distance / Both selector
                         Row(
                             modifier = Modifier
@@ -1826,7 +1846,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(44.dp)
+                                .height(40.dp)
                                 .testTag(
                                     "save_settings_button"
                                 ),
@@ -1853,7 +1873,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             )
 
                             Text(
-                                text = "Save Order Filter 1",
+                                text = "Save Global Filter",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp
                             )
