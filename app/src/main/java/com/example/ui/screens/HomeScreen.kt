@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -393,6 +394,9 @@ val goToAreas by prefs.goToAreas.collectAsState()
         }
 
     Scaffold(
+        // SMARTDRIVO_ALL_PAGES_UP_V3
+        // Parent layout already handles system bars.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {},
         containerColor = LightBackground
@@ -404,7 +408,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item { Spacer(modifier = Modifier.height(10.dp)) }
+            item { Spacer(modifier = Modifier.height(2.dp)) }
 
             // HOME_MEMBERSHIP_PROFILE_CARD_V1
             item {
