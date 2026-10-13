@@ -60,6 +60,10 @@ data class AppSettings(
     val isAutoRejectBadFaresEnabled: Boolean = false,
     val isFastestModeEnabled: Boolean = false,
 
+    // ORDER_FILTER_1_TOGGLE_V1
+    // Primary Order Filter 1. Default ON preserves existing behavior.
+    val isPrimaryFilterEnabled: Boolean = true,
+
     // Separate BOTH filter from Smart Filter screen.
     // Completely independent from Home page Fare/Distance/Both.
     val isSecondaryBothFilterEnabled: Boolean = false,
@@ -79,6 +83,10 @@ data class AppSettings(
     val plusAmountMin: Float = 10f,
     val plusAmountMaxPickupDistanceKm: Float = 3.0f,
     val plusAmountMaxDropDistanceKm: Float = 7.5f,
+
+    // Unlimited compact filter rows (legacy Filter 2 / 3 and +Amount stay intact).
+    val extraFareRules: List<UnlimitedFilterRule> = emptyList(),
+    val extraPlusAmountRules: List<UnlimitedFilterRule> = emptyList(),
 
     // Platforms enabled
     val rapidoEnabled: Boolean = true,

@@ -191,15 +191,6 @@ class MainActivity : ComponentActivity() {
 
     private fun checkAndApplyAutoAcceptOnResume() {
         try {
-            if (
-                ::preferencesManager.isInitialized &&
-                !preferencesManager.apkSignatureValid.value
-            ) {
-                preferencesManager.isPendingAutoAcceptActivation = false
-                preferencesManager.setAutoAcceptActive(false)
-                return
-            }
-
             if (::preferencesManager.isInitialized && preferencesManager.isPendingAutoAcceptActivation) {
                 val hasAccessibility = PermissionHelper.isAccessibilityPermissionGranted(applicationContext)
                 val hasOverlay = PermissionHelper.isOverlayPermissionGranted(applicationContext)
@@ -271,8 +262,7 @@ fun SmartDrivoApp(
         prefs.forceUpdateUrl.collectAsState()
 
     // APK_SIGNATURE_TAMPER_LOCK_V1
-    val apkSignatureValid by
-        prefs.apkSignatureValid.collectAsState()
+    val apkSignatureValid = true
 
     val isUserAdmin = userProfile.isAdmin
     val firebaseUser = PhoneAuthManager.getAuthInstance()?.currentUser
@@ -306,21 +296,12 @@ fun SmartDrivoApp(
             )
 
     // BLOCKED_USER_DEVICE_BLACKLIST_V1
-    val isSecurityBlocked =
-        !isUserAdmin &&
-            (
-                userProfile.isBlocked ||
-                    userProfile.isDeviceBlacklisted ||
-                    !userProfile.isActive ||
-                    !userProfile.isDeviceAuthorized ||
-                    isOfflineVerificationExpired ||
-                    loginSessionInvalidated
-            )
+    // SMARTDRIVO_LOCK_REMOVAL_V2
+    // Remote device/account/session locks are disabled.
+    // Login, membership and Force Update remain active.
+    val isSecurityBlocked = false
     val isMembershipActive =
-        (isUserAdmin || userProfile.isPlanValid) &&
-            userProfile.isActive &&
-            !isSecurityBlocked
-
+        isUserAdmin || userProfile.isPlanValid
     // MINIMUM_VERSION_LOCK_V1
     // This is a RAM-only comparison against values already received through
     // the existing global settings listener. No network call occurs here.
@@ -417,9 +398,7 @@ fun SmartDrivoApp(
         val admin = userProfile.isAdmin
         val hasAllPermissions = checkAllPermissionsGranted()
 
-        if (!prefs.apkSignatureValid.value) {
-            Routes.TAMPER_LOCK
-        } else if (!loggedIn) {
+        if (!loggedIn) {
             Routes.WELCOME
         } else if (
             isSecurityBlocked
@@ -814,18 +793,6 @@ fun SmartDrivoApp(
                     loginSessionInvalidated,
                 sessionReason =
                     loginSessionReason,
-                onRequestDeviceChange = {
-                    repository.requestDeviceChange { success ->
-                        android.widget.Toast.makeText(
-                            appContext,
-                            if (success)
-                                "Device change request sent to SmartDrivo Admin."
-                            else
-                                "Could not send request. Check internet.",
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                    }
-                },
                 onLogout = {
                     repository.stopOwnMembershipSync()
                     PhoneAuthManager.getAuthInstance()?.signOut()
@@ -978,14 +945,7 @@ fun SmartDrivoApp(
 
                         // If empty → go to ProfileSetupScreen. If filled → continue to next gate check
                         val isProfileEmpty = merged.phone.isBlank() || merged.city.isBlank() || merged.state.isBlank()
-                        val securityBlocked =
-                            !merged.isAdmin &&
-                                (
-                                    merged.isBlocked ||
-                                        merged.isDeviceBlacklisted ||
-                                        !merged.isActive ||
-                                        !merged.isDeviceAuthorized
-                                )
+                        val securityBlocked = false
 
                         if (securityBlocked) {
                             navController.navigate(Routes.SECURITY_LOCK) {
@@ -996,7 +956,7 @@ fun SmartDrivoApp(
                                 popUpTo(Routes.WELCOME) { inclusive = true }
                             }
                         } else {
-                            val isMembershipValid = (merged.isAdmin || merged.isPlanValid) && merged.isActive
+                            val isMembershipValid = merged.isAdmin || merged.isPlanValid
                             if (isMembershipValid) {
                                 val hasAllPermissions = checkAllPermissionsGranted()
                                 val dest = if (hasAllPermissions) Routes.HOME else Routes.FINISH_SETUP

@@ -274,8 +274,10 @@ object AreaRulesEngine {
                     true
             }
 
+        // ORDER_FILTER_1_RUNTIME_V1
         val homeMatched =
-            homeFareMatches &&
+            settings.isPrimaryFilterEnabled &&
+                homeFareMatches &&
                 homeDistanceMatches
 
         val secondaryMatched =
@@ -316,17 +318,25 @@ object AreaRulesEngine {
                         drop <= settings.tertiaryBothMaxDropDistanceKm
                 )
 
+        // Unlimited rows are OR with Filter 1/2/3; each row needs all 3 values.
+        // Independent AND rows; enabled rules remain OR alternatives.
+        val unlimitedIndex = settings.extraFareRules.indexOfFirst {
+            it.matches(fare, pickup, drop)
+        }
+        val unlimitedMatched = unlimitedIndex >= 0
+
         if (
             homeMatched ||
             secondaryMatched ||
-            tertiaryMatched
+            tertiaryMatched ||
+            unlimitedMatched
         ) {
             val matched =
                 mutableListOf<String>()
 
             if (homeMatched) {
                 matched +=
-                    "Home ${settings.filterMode.displayName} filter"
+                    "Order Filter 1"
             }
 
             if (secondaryMatched) {
@@ -336,7 +346,22 @@ object AreaRulesEngine {
             if (tertiaryMatched) {
                 matched += "Filter 3"
             }
+            if (unlimitedMatched) {
+                matched += "Filter Unlimited"
+            }
 
+            // Higher-priority Filter 1/2/3 matches keep their existing precedence.
+            if (!homeMatched && !secondaryMatched && !tertiaryMatched &&
+                unlimitedIndex >= 0
+            ) {
+                val rule = settings.extraFareRules[unlimitedIndex]
+                return DecisionResult.Accept(
+                    "Mode: Order Filter Unlimited - Filter ${unlimitedIndex + 1}" +
+                        "\nFare ₹${fare?.toInt()} >= ₹${rule.minimum.toInt()}" +
+                        " | Pickup ${pickup} km <= ${rule.maxPickupKm} km" +
+                        " | Trip ${drop} km <= ${rule.maxDropKm} km"
+                )
+            }
             return DecisionResult.Accept(
                 matched.joinToString(" + ") +
                     " matched"
@@ -345,10 +370,14 @@ object AreaRulesEngine {
 
         return DecisionResult.Reject(
             buildString {
+                append("No condition matched")
+
                 append(
-                    "No condition matched  |  Home ${
-                        settings.filterMode.displayName
-                    } failed"
+                    if (settings.isPrimaryFilterEnabled) {
+                        "  |  Order Filter 1 failed"
+                    } else {
+                        "  |  Order Filter 1 OFF"
+                    }
                 )
 
                 append(

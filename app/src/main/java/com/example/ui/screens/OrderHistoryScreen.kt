@@ -1514,78 +1514,28 @@ private fun cleanHistoryReasonV7(raw: String): String {
         .trim()
 }
 
-private fun formatGenericFilterFailureV7(
-    raw: String
-): String? {
-    val clean =
-        cleanHistoryReasonV7(raw)
+private fun formatGenericFilterFailureV7(raw: String): String? {
+    val clean = cleanHistoryReasonV7(raw)
+    if (!clean.contains("No condition matched", ignoreCase = true)) return null
 
-    if (
-        !clean.contains(
-            "No condition matched",
-            ignoreCase = true
-        )
-    ) {
-        return null
-    }
-
-    val filter1 =
-        when {
-            clean.contains(
-                "Fare Only failed",
-                ignoreCase = true
-            ) ->
-                "Fare Only"
-
-            clean.contains(
-                "Distance Only failed",
-                ignoreCase = true
-            ) ->
-                "Distance Only"
-
-            clean.contains(
-                "Both failed",
-                ignoreCase = true
-            ) ->
-                "Both"
-
-            else ->
-                null
+    // Use actual decision-time failures, NOT today's mutable filter settings.
+    val lines = clean.replace("  |  ", "\n").lines()
+        .map { it.trim() }
+        .filter { line ->
+            !line.equals("No condition matched", ignoreCase = true) &&
+                !line.startsWith("Auto Reject: No condition matched", ignoreCase = true) &&
+                !line.endsWith(" OFF", ignoreCase = true) &&
+                line.isNotBlank() &&
+                (line.startsWith("Order Filter 1", ignoreCase = true) ||
+                    line.startsWith("Filter 2", ignoreCase = true) ||
+                    line.startsWith("Filter 3", ignoreCase = true) ||
+                    line.startsWith("Unlimited Filter", ignoreCase = true))
         }
-
-    val filter2Failed =
-        clean.contains(
-            "Filter 2 failed",
-            ignoreCase = true
-        )
-
-    val filter3Failed =
-        clean.contains(
-            "Filter 3 failed",
-            ignoreCase = true
-        )
-
-    return buildString {
-        if (filter1 != null) {
-            append(
-                "Filter 1: $filter1 Not Match ❌"
-            )
-        } else {
-            append(
-                "Filter 1: Not Match ❌"
-            )
-        }
-
-        if (filter2Failed) {
-            append(
-                "\nFilter 2: Not Match ❌"
-            )
-        }
-
-        if (filter3Failed) {
-            append(
-                "\nFilter 3: Not Match ❌"
-            )
+    return if (lines.isEmpty()) {
+        "No enabled filter matched ❌"
+    } else {
+        lines.joinToString("\n") { line ->
+            line.replace("failed", "Not Match", ignoreCase = true)
         }
     }
 }

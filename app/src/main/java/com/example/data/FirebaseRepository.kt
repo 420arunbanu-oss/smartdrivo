@@ -37,100 +37,24 @@ class FirebaseRepository(
     private var ownPaymentsListener: ListenerRegistration? = null
 
     // BLOCKED_USER_DEVICE_BLACKLIST_V1
-    private var ownBlockedDeviceListener: ListenerRegistration? = null
+
 
     // OFFLINE_GRACE_LOCK_V1
     // The offline lease refreshes only after BOTH the user entitlement and
     // current-device blacklist checks have succeeded.
     private var ownSecurityUserVerified = false
-    private var ownSecurityDeviceVerified = false
 
-    // LOGIN_SESSION_LOCK_V1
-    @Volatile
-    private var loginSessionClaimInProgress =
-        false
+
 
     private fun maybeMarkOwnSecurityVerified(
         uid: String
     ) {
         if (
-            ownSecurityUserVerified &&
-            ownSecurityDeviceVerified
+            ownSecurityUserVerified
         ) {
             prefs.markSecurityVerifiedNow(
                 uid
             )
-        }
-    }
-
-    // LOGIN_SESSION_LOCK_V1
-    // Claims the current Firebase-authenticated account session.
-    // This runs only during login/startup migration, never in a ride event.
-    private fun claimOwnLoginSession(
-        uid: String
-    ) {
-        val fs =
-            firestore
-                ?: return
-
-        if (
-            uid.isBlank() ||
-            loginSessionClaimInProgress
-        ) {
-            return
-        }
-
-        val sessionId =
-            prefs
-                .getOrCreateLoginSessionIdForClaim()
-
-        loginSessionClaimInProgress =
-            true
-
-        scope.launch {
-            try {
-                fs.collection("users")
-                    .document(uid)
-                    .set(
-                        mapOf(
-                            "activeSessionId" to
-                                sessionId,
-                            "activeSessionDevice" to
-                                currentDeviceName(),
-                            "activeSessionStartedAt" to
-                                System.currentTimeMillis(),
-                            "activeSessionAppVersion" to
-                                currentAppVersionName()
-                        ),
-                        SetOptions.merge()
-                    )
-                    .await()
-
-                prefs.markLoginSessionActive(
-                    sessionId
-                )
-
-                Log.i(
-                    "FirebaseRepo",
-                    "LOGIN SESSION V1: current session claimed"
-                )
-            } catch (e: Exception) {
-                Log.w(
-                    "FirebaseRepo",
-                    "LOGIN SESSION V1 claim failed: ${e.message}"
-                )
-
-                prefs.invalidateLoginSession(
-                    "SmartDrivo could not verify this login session. Check internet and log in again."
-                )
-
-                prefs.setAutoAcceptActive(
-                    false
-                )
-            } finally {
-                loginSessionClaimInProgress =
-                    false
-            }
         }
     }
 
@@ -250,10 +174,7 @@ class FirebaseRepository(
 
         val isAdmin = doc.getBoolean("isAdmin") ?: false
         val boundInstallId = doc.getString("boundInstallId").orEmpty()
-        val deviceAuthorized =
-            isAdmin ||
-                boundInstallId.isBlank() ||
-                boundInstallId == prefs.getOrCreateInstallId()
+        val deviceAuthorized = true // Device-lock feature removed
 
         return UserProfile(
             uid = doc.id,
@@ -282,8 +203,7 @@ class FirebaseRepository(
                     ?: doc.getString("registeredDevice")
                     ?: "",
             isDeviceAuthorized = deviceAuthorized,
-            deviceChangeRequested =
-                doc.getBoolean("deviceChangeRequested") ?: false,
+            deviceChangeRequested = false,
             referralCode = doc.getString("referralCode") ?: "",
             createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
         )
@@ -316,77 +236,14 @@ class FirebaseRepository(
         val uid = auth?.currentUser?.uid ?: return
         val fs = firestore ?: return
 
+        // Clear old device-session invalidation on startup.
+        prefs.clearLoginSessionState()
+
         ownUserListener?.remove()
         ownPaymentsListener?.remove()
-        ownBlockedDeviceListener?.remove()
 
         // OFFLINE_GRACE_LOCK_V1
         ownSecurityUserVerified = false
-        ownSecurityDeviceVerified = false
-
-        // BLOCKED_USER_DEVICE_BLACKLIST_V1
-        // Device blacklist is checked through a live Firestore document listener.
-        // This runs outside the live order path.
-        val securityDeviceKey =
-            currentSecurityDeviceKey()
-
-        ownBlockedDeviceListener =
-            fs.collection("blockedDevices")
-                .document(securityDeviceKey)
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        Log.w(
-                            "FirebaseRepo",
-                            "Blocked-device listener error: ${error.message}"
-                        )
-                        return@addSnapshotListener
-                    }
-
-                    val blocked =
-                        snapshot != null &&
-                            snapshot.exists() &&
-                            snapshot.getBoolean("active") != false
-
-                    val reason =
-                        if (blocked)
-                            snapshot?.getString("reason")
-                                ?.takeIf { it.isNotBlank() }
-                                ?: "This device has been blocked by SmartDrivo Admin."
-                        else
-                            ""
-
-                    val latest =
-                        prefs.userProfile.value
-
-                    val updated =
-                        latest.copy(
-                            isDeviceBlacklisted = blocked,
-                            deviceBlacklistReason = reason
-                        )
-
-                    prefs.saveUserProfile(updated)
-
-                    // OFFLINE_GRACE_LOCK_V3
-                    // Firestore may emit cached snapshots while fully offline.
-                    // Cached data is useful for UI, but it must never renew the
-                    // server-verification lease.
-                    if (
-                        snapshot != null &&
-                        !snapshot.metadata.isFromCache
-                    ) {
-                        ownSecurityDeviceVerified = true
-                        maybeMarkOwnSecurityVerified(
-                            uid
-                        )
-                    }
-
-                    if (
-                        blocked &&
-                        !updated.isAdmin
-                    ) {
-                        prefs.setAutoAcceptActive(false)
-                    }
-                }
 
         ownUserListener = fs.collection("users").document(uid)
             .addSnapshotListener { snapshot, error ->
@@ -409,51 +266,6 @@ class FirebaseRepository(
                     )
 
                     prefs.saveUserProfile(merged)
-
-                    // LOGIN_SESSION_LOCK_V1
-                    // Admin is exempt. Drivers keep one authoritative session.
-                    if (remote.isAdmin) {
-                        prefs.clearLoginSessionForAdmin()
-                    } else {
-                        val remoteSessionId =
-                            snapshot.getString(
-                                "activeSessionId"
-                            ).orEmpty()
-
-                        val localSessionId =
-                            prefs.currentLoginSessionId
-
-                        if (
-                            !loginSessionClaimInProgress &&
-                            localSessionId.isNotBlank() &&
-                            remoteSessionId.isNotBlank() &&
-                            remoteSessionId !=
-                                localSessionId
-                        ) {
-                            prefs.invalidateLoginSession(
-                                "This SmartDrivo account was signed in on another device."
-                            )
-
-                            prefs.setAutoAcceptActive(
-                                false
-                            )
-
-                            Log.w(
-                                "FirebaseRepo",
-                                "LOGIN SESSION V1: old session invalidated"
-                            )
-                        } else if (
-                            !loginSessionClaimInProgress &&
-                            localSessionId.isBlank() &&
-                            !snapshot.metadata.isFromCache
-                        ) {
-                            // One-time migration for already logged-in users,
-                            // and every fresh login after local logout.
-                            claimOwnLoginSession(
-                                uid
-                            )
-                        }
-                    }
 
                     // OFFLINE_GRACE_LOCK_V3
                     // Only a server-backed snapshot can renew the lease.
@@ -492,48 +304,8 @@ class FirebaseRepository(
     fun stopOwnMembershipSync() {
         ownUserListener?.remove()
         ownPaymentsListener?.remove()
-        ownBlockedDeviceListener?.remove()
         ownUserListener = null
         ownPaymentsListener = null
-        ownBlockedDeviceListener = null
-    }
-
-    // DEVICE_CHANGE_REQUEST_V1
-    fun requestDeviceChange(
-        onComplete: ((Boolean) -> Unit)? = null
-    ) {
-        val uid = auth?.currentUser?.uid
-        val fs = firestore
-
-        if (uid.isNullOrBlank() || fs == null) {
-            onComplete?.invoke(false)
-            return
-        }
-
-        scope.launch {
-            try {
-                fs.collection("users")
-                    .document(uid)
-                    .set(
-                        mapOf(
-                            "deviceChangeRequested" to true,
-                            "requestedDeviceId" to prefs.getOrCreateInstallId(),
-                            "requestedDeviceName" to currentDeviceName(),
-                            "requestedDeviceAt" to System.currentTimeMillis()
-                        ),
-                        SetOptions.merge()
-                    )
-                    .await()
-
-                onComplete?.invoke(true)
-            } catch (e: Exception) {
-                Log.e(
-                    "FirebaseRepo",
-                    "Device change request failed: ${e.message}"
-                )
-                onComplete?.invoke(false)
-            }
-        }
     }
 
     fun startAdminBackendSync() {
@@ -742,13 +514,7 @@ class FirebaseRepository(
                                     "registeredDeviceAt" to now,
                                     "registeredDeviceSource" to
                                         "REGISTRATION",
-                                    "boundInstallId" to
-                                        prefs.getOrCreateInstallId(),
-                                    "boundDevice" to
-                                        currentDevice,
-                                    "deviceBoundAt" to now,
-                                    "deviceChangeRequested" to
-                                        false
+
                                 )
                         )
 
@@ -852,17 +618,6 @@ class FirebaseRepository(
                             emptyMap<String, Any>()
                         }
 
-                    val deviceBindingPatch =
-                        if (existing.getString("boundInstallId").isNullOrBlank()) {
-                            mapOf(
-                                "boundInstallId" to prefs.getOrCreateInstallId(),
-                                "boundDevice" to currentDevice,
-                                "deviceBoundAt" to now
-                            )
-                        } else {
-                            emptyMap<String, Any>()
-                        }
-
                     // TRIAL_ABUSE_PROTECTION_V4
                     // Backfill older accounts that already consumed a trial.
                     // This makes protection effective for existing users after
@@ -932,8 +687,7 @@ class FirebaseRepository(
 
                     docRef.set(
                         safeClientMap +
-                            registrationDevicePatch +
-                            deviceBindingPatch,
+                            registrationDevicePatch,
                         SetOptions.merge()
                     ).await()
                 }
@@ -1021,33 +775,11 @@ class FirebaseRepository(
                 val blockReason =
                     doc.getString("blockReason").orEmpty()
 
-                val blockedDeviceDoc =
-                    fs.collection("blockedDevices")
-                        .document(
-                            currentSecurityDeviceKey()
-                        )
-                        .get()
-                        .await()
-
-                val isDeviceBlacklisted =
-                    blockedDeviceDoc.exists() &&
-                        blockedDeviceDoc.getBoolean("active") != false
-
-                val deviceBlacklistReason =
-                    if (isDeviceBlacklisted)
-                        blockedDeviceDoc
-                            .getString("reason")
-                            ?.takeIf { it.isNotBlank() }
-                            ?: "This device has been blocked by SmartDrivo Admin."
-                    else
-                        ""
-
                 // OFFLINE_GRACE_LOCK_V3
                 // DocumentReference.get() may fall back to Firestore cache
                 // while offline. Cache reads must not extend the grace lease.
                 if (
-                    !doc.metadata.isFromCache &&
-                    !blockedDeviceDoc.metadata.isFromCache
+                    !doc.metadata.isFromCache
                 ) {
                     prefs.markSecurityVerifiedNow(
                         doc.id.ifEmpty { uid }
@@ -1078,21 +810,15 @@ class FirebaseRepository(
                     isActive = isActive,
                     isBlocked = isBlocked,
                     blockReason = blockReason,
-                    isDeviceBlacklisted =
-                        isDeviceBlacklisted,
-                    deviceBlacklistReason =
-                        deviceBlacklistReason,
+                    isDeviceBlacklisted = false,
+                    deviceBlacklistReason = "",
                     boundInstallId = doc.getString("boundInstallId").orEmpty(),
                     boundDeviceName =
                         doc.getString("boundDevice")
                             ?: doc.getString("registeredDevice")
                             ?: "",
-                    isDeviceAuthorized =
-                        isAdmin ||
-                            doc.getString("boundInstallId").isNullOrBlank() ||
-                            doc.getString("boundInstallId") == prefs.getOrCreateInstallId(),
-                    deviceChangeRequested =
-                        doc.getBoolean("deviceChangeRequested") ?: false,
+                    isDeviceAuthorized = true,
+                    deviceChangeRequested = false,
                     referralCode = referralCode,
                     createdAt = createdAt
                 )

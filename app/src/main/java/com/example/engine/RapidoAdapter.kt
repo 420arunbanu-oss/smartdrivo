@@ -248,6 +248,15 @@ object RapidoAdapter {
         if (clean.length < 2) return true
         val lower = clean.lowercase()
 
+        // RAPIDO_ADDRESS_UI_LABELS_V1
+        // Switch/status labels must never become destination addresses.
+        if (lower in setOf(
+                "off", "on", "enabled", "disabled", "true", "false",
+                "auto priority", "priority", "loading", "retry", "cancelled",
+                "active", "inactive", "switch off", "switch on"
+            )
+        ) return true
+
         // Never treat Rapido UI counters as pickup/drop addresses.
         if (
             lower.matches(Regex("""^\d+\s+(?:orders?|rides?|requests?)$""")) ||
@@ -676,6 +685,63 @@ object RapidoAdapter {
      * - Extract drop address (text under second km node)
      * - Do NOT use "Auto", "Services", "Nearby" as addresses
      */
+    // RAPIDO_LABELED_KM_VIEW_IDS_V2
+    // Rapido can emit Trip before Pickup in its Accessibility text order.
+    // Position-based parsing then swaps the two distances. Prefer explicit
+    // trusted distance view IDs from the SAME already-collected tree nodes.
+    // Unknown/contradictory IDs never fabricate a successful filter match.
+    internal fun reconcileKmByViewId(
+        data: RapidoOrderData,
+        nodes: List<Pair<String, String?>>
+    ): RapidoOrderData {
+        val labeledPickup = linkedSetOf<Float>()
+        val labeledTrip = linkedSetOf<Float>()
+        for ((rawText, rawId) in nodes) {
+            val id = rawId?.substringAfter(":id/")?.lowercase() ?: continue
+            // Exclude UI controls, address strings and timers.
+            if (listOf("address", "location", "timer", "time", "price", "fare", "amount")
+                    .any { id.contains(it) }) continue
+            val kmValues = KM_REGEX.findAll(rawText)
+                .mapNotNull { it.groupValues.getOrNull(1)?.toFloatOrNull() }
+                .filter { it.isFinite() && it > 0f }
+                .toList()
+            // Containers with multiple distances do not identify one field.
+            if (kmValues.size != 1) continue
+            val pickupId = id.contains("pickup") || id.contains("pick_up") ||
+                id.contains("source_distance") || id.contains("distance_to_pickup")
+            val tripId = id.contains("trip") || id.contains("drop") ||
+                id.contains("destination_distance") || id.contains("dest_distance")
+            if (pickupId && !tripId) labeledPickup.add(kmValues.single())
+            if (tripId && !pickupId) labeledTrip.add(kmValues.single())
+        }
+
+        // Conflicting values from the same field are ambiguous: fail closed.
+        if (labeledPickup.size > 1 || labeledTrip.size > 1) {
+            return data.copy(
+                pickupKm = if (labeledPickup.size > 1) null
+                    else labeledPickup.firstOrNull() ?: data.pickupKm,
+                dropKm = if (labeledTrip.size > 1) null
+                    else labeledTrip.firstOrNull() ?: data.dropKm
+            )
+        }
+        val pickupHint = labeledPickup.firstOrNull()
+        val tripHint = labeledTrip.firstOrNull()
+        if (pickupHint == null && tripHint == null) return data
+
+        fun near(a: Float?, b: Float?) =
+            a != null && b != null && kotlin.math.abs(a - b) < 0.01f
+
+        var pickup = pickupHint ?: data.pickupKm
+        var trip = tripHint ?: data.dropKm
+        if (pickupHint != null && tripHint == null && near(data.dropKm, pickupHint)) {
+            trip = if (!near(data.pickupKm, pickupHint)) data.pickupKm else null
+        }
+        if (tripHint != null && pickupHint == null && near(data.pickupKm, tripHint)) {
+            pickup = if (!near(data.dropKm, tripHint)) data.dropKm else null
+        }
+        return data.copy(pickupKm = pickup, dropKm = trip)
+    }
+
     fun extractOrderData(root: AccessibilityNodeInfo, skipHomeCheck: Boolean = false, skipPickupAddress: Boolean = false): RapidoOrderData {
         val rootPkg = root.packageName?.toString().orEmpty()
         if (isSmartDrivoPackage(rootPkg) || (!skipHomeCheck && isRapidoHomeScreen(root))) {
@@ -739,7 +805,9 @@ object RapidoAdapter {
             rawDrop
         }
 
-        return data.copy(
+        return reconcileKmByViewId(
+            data, validEntries.map { it.text to it.viewId }
+        ).copy(
             pickupAddress = finalPickup,
             dropAddress = finalDrop,
             bookingId = bookingId
@@ -843,8 +911,14 @@ object RapidoAdapter {
         val bestPair =
             verifiedPairs.maxByOrNull { it.third }
 
+        // RAPIDO_BURST_FARE_GUARD_V1: distinct base+tip pairs on a
+        // non-bundle screen can be two overlapping offers. Wait for a
+        // clean next event instead of trusting a mixed fare.
+        val conflictingFarePairs = !isBundleOrder &&
+            texts.any { KM_REGEX.containsMatchIn(it) } &&
+            verifiedPairs.map { it.first to it.second }.distinct().size > 1
         totalFare =
-            maxOf(
+            if (conflictingFarePairs) 0f else maxOf(
                 highestVisible,
                 bestPair?.third ?: 0f
             )
@@ -904,20 +978,83 @@ object RapidoAdapter {
             }
         }
 
+        // RAPIDO_KM_LABEL_PRIORITY_V1
+        // Some accessibility hierarchies repeat the same 0.9 km text in
+        // nested parent/child nodes. Keep one copy of consecutive identical
+        // text/number pairs so pickup 0.9 km is not read as Trip 0.9 km.
+        // No second tree scan; only the already-captured in-memory text list.
+        val orderedKm = mutableListOf<Pair<Int, Float>>()
+        for (match in kmMatches) {
+            val last = orderedKm.lastOrNull()
+            val repeatedSameNodeText = last != null &&
+                match.first - last.first in 0..2 &&
+                kotlin.math.abs(match.second - last.second) < 0.001f &&
+                texts[match.first].trim().equals(
+                    texts[last.first].trim(), ignoreCase = true
+                )
+            if (!repeatedSameNodeText) orderedKm.add(match)
+        }
+
         // Explicit drop/trip distance detection from labels or text
         var explicitDropKm: Float? = null
-        for (line in texts) {
-            val sanitized = line.replace(Regex("""[0-9]+(?:\.[0-9]+)?\s*(?:km/h|kmph|km\s*/\s*h|km/hr)\b""", RegexOption.IGNORE_CASE), " ")
-            val dropMatch = Regex("""(?:(?:drop|trip|distance|destination)[^\n0-9]*([0-9]+(?:\.[0-9]+)?)\s*km)|(?:([0-9]+(?:\.[0-9]+)?)\s*km[^\n]*(?:drop|trip|distance|destination))""", RegexOption.IGNORE_CASE).find(sanitized)
-            if (dropMatch != null) {
-                val valStr = dropMatch.groupValues[1].ifEmpty { dropMatch.groupValues[2] }
-                val parsed = valStr.toFloatOrNull()
-                if (parsed != null && parsed > 0f) {
-                    explicitDropKm = parsed
-                    break
-                }
+        var explicitPickupKm: Float? = null
+        val tripLabeled = Regex(
+            """(?i)\b(?:trip|drop(?:\s+distance)?|destination\s+distance)\s*[:\-]?\s*([0-9]+(?:\.[0-9]+)?)\s*km\b"""
+        )
+        val tripReverse = Regex(
+            """(?i)\b([0-9]+(?:\.[0-9]+)?)\s*km\s*(?:trip|drop|destination)\b"""
+        )
+        val pickupLabeled = Regex(
+            """(?i)\b(?:pickup|pick\s*up|distance\s+to\s+pickup)\s*[:\-]?\s*([0-9]+(?:\.[0-9]+)?)\s*km\b"""
+        )
+        val standaloneTrip = Regex("""(?i)^(?:trip|drop(?: distance)?|destination distance)\s*:?$""")
+        val standalonePickup = Regex("""(?i)^(?:pickup|pick up|distance to pickup)\s*:?$""")
+        for (i in texts.indices) {
+            val line = texts[i].trim()
+            val stripped = line.replace(
+                Regex("""[0-9]+(?:\.[0-9]+)?\s*(?:km/h|kmph|km\s*/\s*h|km/hr)\b""", RegexOption.IGNORE_CASE),
+                " "
+            )
+            if (explicitDropKm == null) {
+                val found = tripLabeled.find(stripped)?.groupValues?.getOrNull(1)
+                    ?: tripReverse.find(stripped)?.groupValues?.getOrNull(1)
+                    ?: if (standaloneTrip.matches(line))
+                        texts.getOrNull(i + 1)?.let { KM_REGEX.find(it)?.groupValues?.getOrNull(1) }
+                    else null
+                explicitDropKm = found?.toFloatOrNull()?.takeIf { it > 0f }
+            }
+            if (explicitPickupKm == null) {
+                val found = pickupLabeled.find(stripped)?.groupValues?.getOrNull(1)
+                    ?: if (standalonePickup.matches(line))
+                        texts.getOrNull(i + 1)?.let { KM_REGEX.find(it)?.groupValues?.getOrNull(1) }
+                    else null
+                explicitPickupKm = found?.toFloatOrNull()?.takeIf { it > 0f }
             }
         }
+
+        // RAPIDO_BURST_OFFER_KM_GUARD_V1: old/new cards can briefly
+        // expose contradictory explicit Pickup/Trip labels in one scan.
+        val labeledPickupValues = linkedSetOf<Float>()
+        val labeledTripValues = linkedSetOf<Float>()
+        for (i in texts.indices) {
+            val line = texts[i].trim()
+            fun addValid(set: MutableSet<Float>, raw: String?) {
+                raw?.toFloatOrNull()?.takeIf { it.isFinite() && it > 0f }?.let { set.add(it) }
+            }
+            pickupLabeled.findAll(line).forEach { addValid(labeledPickupValues, it.groupValues[1]) }
+            tripLabeled.findAll(line).forEach { addValid(labeledTripValues, it.groupValues[1]) }
+            tripReverse.findAll(line).forEach { addValid(labeledTripValues, it.groupValues[1]) }
+            if (standalonePickup.matches(line)) {
+                addValid(labeledPickupValues,
+                    texts.getOrNull(i + 1)?.let { KM_REGEX.find(it)?.groupValues?.getOrNull(1) })
+            }
+            if (standaloneTrip.matches(line)) {
+                addValid(labeledTripValues,
+                    texts.getOrNull(i + 1)?.let { KM_REGEX.find(it)?.groupValues?.getOrNull(1) })
+            }
+        }
+        val conflictingPickupLabels = labeledPickupValues.size > 1
+        val conflictingTripLabels = labeledTripValues.size > 1
 
         // BUG 1: If pickup distance is "Nearby" or unknown, do NOT assign a numeric value to pickupKm!
         val hasNearby = texts.any { it.trim().equals("nearby", ignoreCase = true) || it.contains("nearby", ignoreCase = true) }
@@ -926,20 +1063,36 @@ object RapidoAdapter {
 
         if (explicitDropKm != null) {
             dropKm = explicitDropKm
-            pickupKm = if (hasNearby) null else kmMatches.map { it.second }.firstOrNull { it != explicitDropKm }
+            pickupKm = if (hasNearby) null else explicitPickupKm
+                ?: orderedKm.map { it.second }.firstOrNull { it != explicitDropKm }
         } else if (hasNearby) {
-            // Pickup is explicitly "Nearby", so pickup distance is NOT a numeric value
+            // Pickup is explicitly "Nearby", so pickup distance is NOT a numeric value.
             pickupKm = null
-            // Any km match on screen belongs to drop/trip distance
-            dropKm = kmMatches.firstOrNull()?.second
+            dropKm = orderedKm.firstOrNull()?.second
         } else {
-            pickupKm = kmMatches.getOrNull(0)?.second
-            dropKm = kmMatches.getOrNull(1)?.second
+            pickupKm = explicitPickupKm ?: orderedKm.getOrNull(0)?.second
+            dropKm = if (explicitPickupKm != null) {
+                orderedKm.firstOrNull { it.second != explicitPickupKm }?.second
+                    ?: orderedKm.getOrNull(1)?.second
+            } else orderedKm.getOrNull(1)?.second
         }
 
         if (dropKm == null) {
             dropKm = OrderDataExtractor.extractDropDistance(texts, texts.joinToString(" "))
         }
+
+        // >2 different unlabeled km values on a non-bundle card can
+        // mean overlapping offers. Don't guess; view IDs may recover
+        // the verified pair without an extra accessibility tree walk.
+        if (!isBundleOrder && !hasNearby &&
+            explicitPickupKm == null && explicitDropKm == null &&
+            orderedKm.map { it.second }.distinct().size > 2
+        ) {
+            pickupKm = null
+            dropKm = null
+        }
+        if (conflictingPickupLabels) pickupKm = null
+        if (conflictingTripLabels) dropKm = null
 
         // A Bundle Order can contain multiple pickup/trip distance pairs:
         // Order 1 pickup, Order 1 trip, Order 2 pickup, Order 2 trip...
@@ -995,8 +1148,8 @@ object RapidoAdapter {
         }
 
         // Step 3b: Proximity to km markers
-        val firstKmIdx = kmMatches.getOrNull(0)?.first
-        val secondKmIdx = kmMatches.getOrNull(1)?.first
+        val firstKmIdx = orderedKm.getOrNull(0)?.first
+        val secondKmIdx = orderedKm.getOrNull(1)?.first
 
         if (!skipPickupAddress && pickupAddress == null && firstKmIdx != null && !hasNearby) {
             val endSearch = secondKmIdx ?: texts.size
@@ -2294,7 +2447,9 @@ object RapidoAdapter {
                 rawDrop
             }
 
-        return data.copy(
+        return reconcileKmByViewId(
+            data, validEntries.map { it.text to it.viewId }
+        ).copy(
             pickupAddress =
                 finalPickup,
             dropAddress =
@@ -2335,17 +2490,11 @@ object RapidoAdapter {
                 root
             )
 
-        if (
-            isRapidoHomeScreenTexts(
-                singlePass.homeTexts
-            )
-        ) {
-            return RapidoPopupValidation(
-                isValid = false,
-                failureReason =
-                    "Home screen detected ('Today's Earnings' / 'ON DUTY' / 'Blue Performance')"
-            )
-        }
+        // RAPIDO_OVERLAY_HOME_READ_V1
+        // Rapido Home content can remain behind a genuine incoming popup.
+        // Do not reject merely for seeing "ON DUTY"; evaluate the actual
+        // fare, pickup, trip and STRICT Accept node from this same scan.
+        val underlyingHomeVisible = isRapidoHomeScreenTexts(singlePass.homeTexts)
 
         // Same fare/distance/drop parsing rules as before, but reuse entries
         // already collected by the single accessibility traversal.
@@ -2396,6 +2545,20 @@ object RapidoAdapter {
                 ?: findAcceptButton(
                     root
                 )
+
+        // A complete popup above Home can be processed; a Home-only screen
+        // or ambiguous popup must still be ignored, never clicked blindly.
+        if (RapidoEarlyReadGate.rejectHomeOverlay(
+                underlyingHomeVisible, orderData.totalFare,
+                orderData.pickupKm, orderData.dropKm, acceptBtn != null
+            )
+        ) {
+            return RapidoPopupValidation(
+                isValid = false,
+                failureReason = "Rapido Home without complete verified offer",
+                orderData = orderData
+            )
+        }
 
         if (acceptBtn == null) {
             return RapidoPopupValidation(

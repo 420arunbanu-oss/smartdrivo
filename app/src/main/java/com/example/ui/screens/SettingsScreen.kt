@@ -558,196 +558,44 @@ fun SettingsScreen(
                     }
                 }
             }
-            // 2. ORDER FILTER 2 + ORDER FILTER 3
+            // ORDER_FILTER_UNLIMITED_V2
+            // Legacy Filter 2 and 3 presets migrate to these independent rows.
             item {
                 SectionHeader("2. ORDER FILTERS")
-
-                OrderFilterCompactCard(
-                    badge = "FILTER 2",
-                    title = "Order Filter 2",
-                    subtitle = "Second ride option",
-                    isChecked = settings.isSecondaryBothFilterEnabled,
-                    minFareText = secondaryMinFareText,
-                    maxPickupText = secondaryMaxPickupText,
-                    maxDropText = secondaryMaxDropText,
-                    onMinFareChange = { secondaryMinFareText = it },
-                    onMaxPickupChange = { secondaryMaxPickupText = it },
-                    onMaxDropChange = { secondaryMaxDropText = it },
-                    onCheckedChange = { enabled ->
-                        val minFare = secondaryMinFareText.toFloatOrNull()
-                        val pickup = secondaryMaxPickupText.toFloatOrNull()
-                        val drop = secondaryMaxDropText.toFloatOrNull()
-
-                        val valid =
-                            minFare != null && minFare > 0f &&
-                                pickup != null && pickup > 0f &&
-                                drop != null && drop > 0f
-
-                        if (enabled && !valid) {
-                            coroutineScope.launch {
-                                snackbarHostState.showSnackbar(
-                                    "Enter valid Filter 2 values first"
-                                )
-                            }
-                        } else {
-                            prefs.saveAppSettings(
-                                settings.copy(
-                                    isSecondaryBothFilterEnabled = enabled,
-                                    secondaryBothMinFare =
-                                        minFare ?: settings.secondaryBothMinFare,
-                                    secondaryBothMaxPickupDistanceKm =
-                                        pickup ?: settings.secondaryBothMaxPickupDistanceKm,
-                                    secondaryBothMaxDropDistanceKm =
-                                        drop ?: settings.secondaryBothMaxDropDistanceKm
-                                )
-                            )
-                            showSavedSnackbar()
-                        }
-                    },
-                    onSave = {
-                        val minFare = secondaryMinFareText.toFloatOrNull()
-                        val pickup = secondaryMaxPickupText.toFloatOrNull()
-                        val drop = secondaryMaxDropText.toFloatOrNull()
-
-                        if (
-                            minFare != null && minFare > 0f &&
-                            pickup != null && pickup > 0f &&
-                            drop != null && drop > 0f
-                        ) {
-                            prefs.saveAppSettings(
-                                settings.copy(
-                                    secondaryBothMinFare = minFare,
-                                    secondaryBothMaxPickupDistanceKm = pickup,
-                                    secondaryBothMaxDropDistanceKm = drop
-                                )
-                            )
-                            showSavedSnackbar()
-                        }
+                UnlimitedRulesEditor(
+                    title = "Order Filter Unlimited",
+                    plus = false,
+                    rules = settings.extraFareRules,
+                    onRulesChange = { updated ->
+                        prefs.saveAppSettings(
+                            prefs.appSettings.value.copy(extraFareRules = updated)
+                        )
+                        showSavedSnackbar()
                     }
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                OrderFilterCompactCard(
-                    badge = "FILTER 3",
-                    title = "Order Filter 3",
-                    subtitle = "Third ride option",
-                    isChecked = settings.isTertiaryBothFilterEnabled,
-                    minFareText = tertiaryMinFareText,
-                    maxPickupText = tertiaryMaxPickupText,
-                    maxDropText = tertiaryMaxDropText,
-                    onMinFareChange = { tertiaryMinFareText = it },
-                    onMaxPickupChange = { tertiaryMaxPickupText = it },
-                    onMaxDropChange = { tertiaryMaxDropText = it },
-                    onCheckedChange = { enabled ->
-                        val minFare = tertiaryMinFareText.toFloatOrNull()
-                        val pickup = tertiaryMaxPickupText.toFloatOrNull()
-                        val drop = tertiaryMaxDropText.toFloatOrNull()
-
-                        val valid =
-                            minFare != null && minFare > 0f &&
-                                pickup != null && pickup > 0f &&
-                                drop != null && drop > 0f
-
-                        if (enabled && !valid) {
-                            coroutineScope.launch {
-                                snackbarHostState.showSnackbar(
-                                    "Enter valid Filter 3 values first"
-                                )
-                            }
-                        } else {
-                            prefs.saveAppSettings(
-                                settings.copy(
-                                    isTertiaryBothFilterEnabled = enabled,
-                                    tertiaryBothMinFare =
-                                        minFare ?: settings.tertiaryBothMinFare,
-                                    tertiaryBothMaxPickupDistanceKm =
-                                        pickup ?: settings.tertiaryBothMaxPickupDistanceKm,
-                                    tertiaryBothMaxDropDistanceKm =
-                                        drop ?: settings.tertiaryBothMaxDropDistanceKm
-                                )
-                            )
-                            showSavedSnackbar()
-                        }
-                    },
-                    onSave = {
-                        val minFare = tertiaryMinFareText.toFloatOrNull()
-                        val pickup = tertiaryMaxPickupText.toFloatOrNull()
-                        val drop = tertiaryMaxDropText.toFloatOrNull()
-
-                        if (
-                            minFare != null && minFare > 0f &&
-                            pickup != null && pickup > 0f &&
-                            drop != null && drop > 0f
-                        ) {
-                            prefs.saveAppSettings(
-                                settings.copy(
-                                    tertiaryBothMinFare = minFare,
-                                    tertiaryBothMaxPickupDistanceKm = pickup,
-                                    tertiaryBothMaxDropDistanceKm = drop
-                                )
-                            )
-                            showSavedSnackbar()
-                        }
+                // PLUS_AMOUNT_UNLIMITED_IN_PARENT_V2
+                // +Amount only applies to Rapido, as in V1.
+                UnlimitedRulesEditor(
+                    title = "+ Amount Filter Unlimited",
+                    plus = true,
+                    rules = settings.extraPlusAmountRules,
+                    onRulesChange = { updated ->
+                        prefs.saveAppSettings(
+                            prefs.appSettings.value.copy(extraPlusAmountRules = updated)
+                        )
+                        showSavedSnackbar()
                     }
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                OrderFilterCompactCard(
-                    badge = "+ AMOUNT",
-                    title = "+ Amount Filter",
-                    subtitle = "Green +₹ amount option",
-                    isChecked = settings.isPlusAmountFilterEnabled,
-                    minFareText = plusAmountMinText,
-                    maxPickupText = plusAmountMaxPickupText,
-                    maxDropText = plusAmountMaxDropText,
-                    primaryLabel = "Min + Amount ₹",
-                    ruleText = "+ Amount + Pickup + Drop must all match",
-                    onMinFareChange = { plusAmountMinText = it },
-                    onMaxPickupChange = { plusAmountMaxPickupText = it },
-                    onMaxDropChange = { plusAmountMaxDropText = it },
-                    onCheckedChange = { enabled ->
-                        val amount = plusAmountMinText.toFloatOrNull()
-                        val pickup = plusAmountMaxPickupText.toFloatOrNull()
-                        val drop = plusAmountMaxDropText.toFloatOrNull()
-                        val valid = amount != null && amount > 0f && pickup != null && pickup > 0f && drop != null && drop > 0f
-                        if (enabled && !valid) {
-                            coroutineScope.launch { snackbarHostState.showSnackbar("Enter valid + Amount filter values first") }
-                        } else {
-                            prefs.saveAppSettings(settings.copy(
-                                isPlusAmountFilterEnabled = enabled,
-                                plusAmountMin = amount ?: settings.plusAmountMin,
-                                plusAmountMaxPickupDistanceKm = pickup ?: settings.plusAmountMaxPickupDistanceKm,
-                                plusAmountMaxDropDistanceKm = drop ?: settings.plusAmountMaxDropDistanceKm
-                            ))
-                            showSavedSnackbar()
-                        }
-                    },
-                    onSave = {
-                        val amount = plusAmountMinText.toFloatOrNull()
-                        val pickup = plusAmountMaxPickupText.toFloatOrNull()
-                        val drop = plusAmountMaxDropText.toFloatOrNull()
-                        if (amount != null && amount > 0f && pickup != null && pickup > 0f && drop != null && drop > 0f) {
-                            prefs.saveAppSettings(settings.copy(
-                                plusAmountMin = amount,
-                                plusAmountMaxPickupDistanceKm = pickup,
-                                plusAmountMaxDropDistanceKm = drop
-                            ))
-                            showSavedSnackbar()
-                        }
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
+                Spacer(modifier = Modifier.height(5.dp))
                 Text(
-                    text = "Accept if Home Filter, Filter 2, Filter 3 or +Amount matches.",
+                    text = "Any ON filter row can match. Each row requires all 3 values.",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = BluePrimary,
-                    maxLines = 1,
-                    softWrap = false
+                    color = BluePrimary
                 )
             }
             // 3. BUNDLE ORDER
@@ -990,6 +838,7 @@ private fun OrderFilterCompactCard(
     onCheckedChange: (Boolean) -> Unit,
     onSave: () -> Unit
 ) {
+    var expanded by rememberSaveable(title) { mutableStateOf(false) }
     val minFare = minFareText.toFloatOrNull()
     val maxPickup = maxPickupText.toFloatOrNull()
     val maxDrop = maxDropText.toFloatOrNull()
@@ -1016,7 +865,7 @@ private fun OrderFilterCompactCard(
             verticalArrangement = Arrangement.spacedBy(9.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1085,6 +934,7 @@ private fun OrderFilterCompactCard(
                 }
             }
 
+            if (expanded) {
             Text(
                 text = ruleText,
                 fontSize = 10.sp,
@@ -1143,6 +993,7 @@ private fun OrderFilterCompactCard(
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp
                 )
+            }
             }
         }
     }

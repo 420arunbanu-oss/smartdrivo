@@ -344,7 +344,7 @@ class RideHistoryCoreTest {
     }
 
     @Test
-    fun test8_sameFingerprintAfterFinalCreatesNewHistoryRow() = runBlocking {
+    fun test8_sameFingerprintOneSecondAfterFinalDedupes() = runBlocking {
         val baseTime =
             System.currentTimeMillis()
 
@@ -385,11 +385,38 @@ class RideHistoryCoreTest {
                 "Evaluating..."
             )
 
-        assertTrue(first.id != second.id)
+        assertEquals(first.id, second.id)
         assertEquals(
-            2,
+            1,
             repository.getAllHistoryDirect().size
         )
+    }
+
+    @Test
+    fun test8b_sameFingerprintAfterTenSecondsCreatesNewHistoryRow() = runBlocking {
+        val previousTime = System.currentTimeMillis() - 10_000L
+        val previous = RideCandidate(
+            platform = Platform.RAPIDO,
+            vehicleType = VehicleType.AUTO,
+            fare = 75f,
+            pickupDistKm = 0.5f,
+            dropDistKm = 3.0f,
+            pickupAddress = "Same Pickup",
+            dropAddress = "Same Drop",
+            dropArea = "Same Area",
+            bookingId = null,
+            detectionTimeMs = previousTime
+        )
+        val first = repository.onOrderDetected(previous, "PROCESSING", "Evaluating...")
+        repository.onOrderDecision(
+            first.id, OrderStatus.ACCEPTED, "FILTERS_MATCHED", "First accepted"
+        )
+        val next = repository.onOrderDetected(
+            previous.copy(detectionTimeMs = System.currentTimeMillis()),
+            "PROCESSING", "Evaluating..."
+        )
+        assertTrue(first.id != next.id)
+        assertEquals(2, repository.getAllHistoryDirect().size)
     }
 
     @Test

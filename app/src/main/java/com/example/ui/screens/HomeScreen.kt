@@ -323,7 +323,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
     }
 
     // HOME_MEMBERSHIP_PROFILE_CARD_V1
-    // UI-only values for the Home membership/profile card.
+    // UI-only values for the new Home membership/profile card.
     val membershipIsActive =
         userProfile.isAdmin || userProfile.isPlanValid
 
@@ -395,7 +395,6 @@ val goToAreas by prefs.goToAreas.collectAsState()
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {},
-
         containerColor = LightBackground
     ) { innerPadding ->
         LazyColumn(
@@ -415,21 +414,30 @@ val goToAreas by prefs.goToAreas.collectAsState()
                         containerColor = Color(0xFFF4FAFF)
                     ),
                     shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, Color(0xFFB9DDF7))
+                    border = BorderStroke(
+                        1.dp,
+                        Color(0xFFB9DDF7)
+                    )
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                            .padding(
+                                horizontal = 12.dp,
+                                vertical = 12.dp
+                            )
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             SmartDrivoLogo(size = 46.dp)
+
                             Spacer(modifier = Modifier.width(10.dp))
 
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Text(
                                     text = "SmartDrivo",
                                     color = TextDarkPrimary,
@@ -437,6 +445,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1
                                 )
+
                                 Text(
                                     text = membershipTitle,
                                     color =
@@ -454,7 +463,10 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                 onClick = onNavigateToCommunity,
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color.White,
-                                border = BorderStroke(1.dp, Color(0xFFE3EDF6))
+                                border = BorderStroke(
+                                    1.dp,
+                                    Color(0xFFE3EDF6)
+                                )
                             ) {
                                 Box(
                                     modifier = Modifier.size(42.dp),
@@ -476,7 +488,10 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
                             color = Color.White.copy(alpha = 0.92f),
-                            border = BorderStroke(1.dp, Color(0xFFE2EDF6))
+                            border = BorderStroke(
+                                1.dp,
+                                Color(0xFFE2EDF6)
+                            )
                         ) {
                             Column(
                                 modifier = Modifier
@@ -487,14 +502,18 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Column(
+                                        modifier = Modifier.weight(1f)
+                                    ) {
                                         Text(
                                             text = "Mobile Number",
                                             color = TextDarkSecondary,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
                                         )
+
                                         Spacer(modifier = Modifier.height(3.dp))
+
                                         Text(
                                             text = userProfile.phone.ifBlank { "Not added" },
                                             color = TextDarkPrimary,
@@ -506,14 +525,18 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         )
                                     }
 
-                                    Column(modifier = Modifier.weight(1.15f)) {
+                                    Column(
+                                        modifier = Modifier.weight(1.15f)
+                                    ) {
                                         Text(
                                             text = "Email ID",
                                             color = TextDarkSecondary,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
                                         )
+
                                         Spacer(modifier = Modifier.height(3.dp))
+
                                         Text(
                                             text = userProfile.email.ifBlank { "Not added" },
                                             color = TextDarkPrimary,
@@ -535,14 +558,18 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1.2f)) {
+                                    Column(
+                                        modifier = Modifier.weight(1.2f)
+                                    ) {
                                         Text(
                                             text = "Plan",
                                             color = TextDarkSecondary,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
                                         )
+
                                         Spacer(modifier = Modifier.height(3.dp))
+
                                         Text(
                                             text = membershipPlanText,
                                             color = TextDarkPrimary,
@@ -554,14 +581,18 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         )
                                     }
 
-                                    Column(modifier = Modifier.weight(0.9f)) {
+                                    Column(
+                                        modifier = Modifier.weight(0.9f)
+                                    ) {
                                         Text(
                                             text = "Plan Status",
                                             color = TextDarkSecondary,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
                                         )
+
                                         Spacer(modifier = Modifier.height(3.dp))
+
                                         Text(
                                             text =
                                                 if (membershipIsActive)
@@ -580,14 +611,18 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         )
                                     }
 
-                                    Column(modifier = Modifier.weight(0.95f)) {
+                                    Column(
+                                        modifier = Modifier.weight(0.95f)
+                                    ) {
                                         Text(
                                             text = "Days Left",
                                             color = TextDarkSecondary,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
                                         )
+
                                         Spacer(modifier = Modifier.height(3.dp))
+
                                         Text(
                                             text = membershipDaysText,
                                             color =
@@ -608,7 +643,6 @@ val goToAreas by prefs.goToAreas.collectAsState()
                     }
                 }
             }
-
             // HOME TOP: Compact Today's Performance
             item {
                 Card(
@@ -1005,23 +1039,31 @@ val goToAreas by prefs.goToAreas.collectAsState()
                 }
             }
             // HOME_FILTER_COMPACT_V1
+            // ORDER_FILTER_1_UI_V1
             // Same compact visual family as Order Filter 2 / 3.
             // Existing Fare / Distance / Both behavior is unchanged.
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = BlueContainer
+                        containerColor =
+                            if (settings.isPrimaryFilterEnabled)
+                                BlueContainer
+                            else
+                                CardBackground
                     ),
                     shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(
                         1.dp,
-                        BluePrimary
+                        if (settings.isPrimaryFilterEnabled)
+                            BluePrimary
+                        else
+                            CardBorderDefault
                     )
                 ) {
                     Column(
-                        modifier = Modifier.padding(11.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                        modifier = Modifier.padding(9.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
 
                         // Header
@@ -1035,52 +1077,118 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             Column(
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            Color.White.copy(
-                                                alpha = 0.75f
-                                            ),
-                                            RoundedCornerShape(9.dp)
-                                        )
-                                        .padding(
-                                            horizontal = 9.dp,
-                                            vertical = 5.dp
-                                        )
+                                Row(
+                                    verticalAlignment =
+                                        Alignment.CenterVertically
                                 ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .background(
+                                                Color.White.copy(
+                                                    alpha = 0.75f
+                                                ),
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                            .padding(
+                                                horizontal = 7.dp,
+                                                vertical = 3.dp
+                                            )
+                                    ) {
+                                        Text(
+                                            text = "FILTER 1",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color =
+                                                if (settings.isPrimaryFilterEnabled)
+                                                    BluePrimary
+                                                else
+                                                    TextDarkSecondary
+                                        )
+                                    }
+
+                                    Spacer(
+                                        modifier =
+                                            Modifier.width(7.dp)
+                                    )
+
                                     Text(
-                                        text = "FILTER 1",
-                                        fontSize = 10.sp,
+                                        text = "Order Filter 1",
                                         fontWeight = FontWeight.Bold,
-                                        color = BluePrimary
+                                        fontSize = 14.sp,
+                                        color = TextDarkPrimary
                                     )
                                 }
 
                                 Spacer(
                                     modifier =
-                                        Modifier.height(7.dp)
+                                        Modifier.height(2.dp)
                                 )
 
                                 Text(
-                                    text = "Home Filter",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = TextDarkPrimary
-                                )
-
-                                Text(
-                                    text = "Primary ride option",
-                                    fontSize = 11.sp,
+                                    text = "One ride option",
+                                    fontSize = 10.sp,
                                     color = TextDarkSecondary
                                 )
                             }
 
-                            Text(
-                                text = "ON",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = BluePrimary
-                            )
+                            Row(
+                                verticalAlignment =
+                                    Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text =
+                                        if (settings.isPrimaryFilterEnabled)
+                                            "ON"
+                                        else
+                                            "OFF",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color =
+                                        if (settings.isPrimaryFilterEnabled)
+                                            BluePrimary
+                                        else
+                                            TextDarkSecondary
+                                )
+
+                                Spacer(
+                                    modifier =
+                                        Modifier.width(5.dp)
+                                )
+
+                                Switch(
+                                    checked =
+                                        settings.isPrimaryFilterEnabled,
+                                    onCheckedChange = { enabled ->
+                                        prefs.saveAppSettings(
+                                            settings.copy(
+                                                isPrimaryFilterEnabled =
+                                                    enabled
+                                            )
+                                        )
+
+                                        coroutineScope.launch {
+                                            snackbarHostState
+                                                .showSnackbar(
+                                                    if (enabled)
+                                                        "Order Filter 1 ON"
+                                                    else
+                                                        "Order Filter 1 OFF"
+                                                )
+                                        }
+                                    },
+                                    colors =
+                                        SwitchDefaults.colors(
+                                            checkedThumbColor =
+                                                Color.White,
+                                            checkedTrackColor =
+                                                BluePrimary,
+                                            uncheckedThumbColor =
+                                                Color.White,
+                                            uncheckedTrackColor =
+                                                Color(0xFFBDBDBD)
+                                        )
+                                )
+                            }
                         }
 
                         // Fare / Distance / Both selector
@@ -1741,7 +1849,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             )
 
                             Text(
-                                text = "Save Home Filter",
+                                text = "Save Order Filter 1",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp
                             )

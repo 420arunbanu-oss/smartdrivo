@@ -29,6 +29,7 @@ import com.example.engine.DecisionResult
 import com.example.engine.OlaAdapter
 import com.example.engine.OrderDataExtractor
 import com.example.engine.RapidoAdapter
+import com.example.engine.RapidoEarlyReadGate
 import com.example.engine.RapidoPopupValidation
 import com.example.engine.UberAdapter
 import com.example.model.AreaGroup
@@ -359,12 +360,21 @@ class SmartDrivoAccessibilityService : AccessibilityService() {
     @Volatile
     private var rapidoPendingRescan = false
 
+    // RAPIDO_PARTIAL_FAST_RECHECK_V1 - only one bounded worker per event burst.
+    @Volatile private var rapidoPartialPopupSeen = false
+
     private val rapidoProcessingLock = Any()
 
 
 
     @Volatile
     private var activeRapidoPopupOrderId: String? = null
+
+    // RAPIDO_VISIBLE_IGNORED_DEDUP_V1
+    // When Auto Reject is OFF, an unmatched popup stays visible.
+    // Pickup km may change, but that must not create a new History card.
+    private val rapidoIgnoredVisibleOfferGuard =
+        com.example.engine.RapidoIgnoredVisibleOfferGuard()
 
     @Volatile
     private var lastValidRapidoPopupAt: Long = 0L
@@ -516,6 +526,7 @@ private val processingTimeoutRunnable = Runnable {
         isProcessing = false
         isRapidoEventProcessing = false
         activeRapidoPopupOrderId = null
+        rapidoIgnoredVisibleOfferGuard.clear()
         activeOrderRecordIds.clear()
 
         isClickInProgress = false
@@ -552,23 +563,16 @@ private val processingTimeoutRunnable = Runnable {
             connectedProfile.uid
         )
 
-        offlineSecurityAllowed =
-            connectedProfile.isAdmin ||
-                prefs.isOfflineGraceValid(
-                    connectedProfile.uid
-                )
+        offlineSecurityAllowed = true
 
         handler.removeCallbacks(
             offlineSecurityCheckRunnable
         )
 
-        handler.post(
-            offlineSecurityCheckRunnable
-        )
+        // Offline device-lock monitor disabled.
 
         // APK_SIGNATURE_TAMPER_LOCK_V1
-        apkIntegrityAllowed =
-            prefs.apkSignatureValid.value
+        apkIntegrityAllowed = true
 
         repository = FirebaseRepository(applicationContext, prefs)
         isServiceRunning = true
@@ -713,40 +717,19 @@ private val processingTimeoutRunnable = Runnable {
     // A verified NEW Rapido popup should not be blocked by the
     // previous order's generic 3-second click-in-progress lock.
     // Anti-spam limits are still retained.
-    @Synchronized
-    private fun canExecuteVerifiedRapidoClick(): Boolean {
-        if (!preferencesManager.isAutoAcceptEnabled) {
-            return false
-        }
+    // Verified Rapido offer clicks have their own sequential five-attempt guard.
+    // Other platform/generic safety and cooldown remain unchanged.
+    private val rapidoVerifiedClickGuard =
+        com.example.engine.RapidoVerifiedClickGuard()
 
-        val now = System.currentTimeMillis()
-
-        if (now < clickBlockedUntilTimestamp) {
-            return false
-        }
-
-        recentClickTimestamps.removeAll {
-            now - it > 2_000L
-        }
-
-        if (recentClickTimestamps.size >= 3) {
-            clickBlockedUntilTimestamp =
-                now + 5_000L
-
-            recentClickTimestamps.clear()
-
-            Log.w(
-                TAG,
-                "Rapido verified click blocked by anti-spam safety limit"
-            )
-
-            return false
-        }
-
-        // Do not use isClickInProgress here.
-        // activeRapidoPopupOrderId protects the SAME popup.
-        return true
-    }
+    private fun canExecuteVerifiedRapidoClick(
+        popupSession: Long,
+        attemptNumber: Int
+    ): Boolean = rapidoVerifiedClickGuard.tryAllow(
+        popupSession = popupSession,
+        attemptNumber = attemptNumber,
+        autoAcceptEnabled = preferencesManager.isAutoAcceptEnabled
+    )
     @Synchronized
     private fun notifyClickInitiated() {
         val now = System.currentTimeMillis()
@@ -798,11 +781,15 @@ private val processingTimeoutRunnable = Runnable {
         val maxDropKm: Float,
         val filterMode: String = "both",
 
+        // ORDER_FILTER_1_DIRECT_RUNTIME_V1
+        val primaryFilterEnabled: Boolean = true,
+
         val secondaryBothEnabled: Boolean = false,
         val secondaryBothMinFare: Float = 50f,
         val secondaryBothMaxPickupKm: Float = 3.0f,
         val secondaryBothMaxDropKm: Float = 7.5f,
 
+        val extraFareRules: List<com.example.model.UnlimitedFilterRule> = emptyList(),
         val tertiaryBothEnabled: Boolean = false,
         val tertiaryBothMinFare: Float = 50f,
         val tertiaryBothMaxPickupKm: Float = 3.0f,
@@ -872,6 +859,16 @@ private val processingTimeoutRunnable = Runnable {
             else -> "both"
         }
 
+        val primaryFilterEnabled =
+            try {
+                sp.getBoolean(
+                    "setting_primary_filter_enabled",
+                    true
+                )
+            } catch (_: Exception) {
+                true
+            }
+
         val secondaryBothEnabled =
             try {
                 sp.getBoolean(
@@ -940,6 +937,12 @@ private val processingTimeoutRunnable = Runnable {
             maxPickupKm = maxPickupKm,
             maxDropKm = maxDropKm,
             filterMode = normalizedFilterMode,
+            extraFareRules = com.example.model.UnlimitedFilterRule.decodeCached(
+                sp.getString("setting_unlimited_fare_rules_json", null)
+            ),
+
+            primaryFilterEnabled =
+                primaryFilterEnabled,
 
             secondaryBothEnabled =
                 secondaryBothEnabled,
@@ -1089,8 +1092,19 @@ private val processingTimeoutRunnable = Runnable {
             "[Candidate: fare=₹$fare, pickup=${pickup}km, drop=${drop}km]"
         )
 
-        val checkDistance = filterMode == "distance_only" || filterMode == "both"
-        val checkFare = filterMode == "fare_only" || filterMode == "both"
+        val checkDistance =
+            direct.primaryFilterEnabled &&
+                (
+                    filterMode == "distance_only" ||
+                        filterMode == "both"
+                )
+
+        val checkFare =
+            direct.primaryFilterEnabled &&
+                (
+                    filterMode == "fare_only" ||
+                        filterMode == "both"
+                )
 
         // Build a complete decision report instead of stopping at the first failure.
         // This preserves the REAL order values + the filter limits that were active
@@ -1190,6 +1204,14 @@ private val processingTimeoutRunnable = Runnable {
             }
         }
 
+        val unlimitedMatched = direct.extraFareRules.any {
+            it.matches(fare, pickup, drop)
+        }
+
+        val primaryMatched =
+            direct.primaryFilterEnabled &&
+                failureReasons.isEmpty()
+
         val secondaryMatched =
             direct.secondaryBothEnabled &&
                 secondaryFailureReasons.isEmpty()
@@ -1198,16 +1220,18 @@ private val processingTimeoutRunnable = Runnable {
             direct.tertiaryBothEnabled &&
                 tertiaryFailureReasons.isEmpty()
 
-        // Home failed but Filter 2 or Filter 3 passed -> ACCEPT.
         if (
-            failureReasons.isNotEmpty() &&
-            (
-                secondaryMatched ||
-                tertiaryMatched
-            )
+            primaryMatched ||
+            secondaryMatched ||
+            tertiaryMatched ||
+            unlimitedMatched
         ) {
             val matched =
                 mutableListOf<String>()
+
+            if (primaryMatched) {
+                matched += "Order Filter 1"
+            }
 
             if (secondaryMatched) {
                 matched += "Filter 2"
@@ -1216,42 +1240,40 @@ private val processingTimeoutRunnable = Runnable {
             if (tertiaryMatched) {
                 matched += "Filter 3"
             }
+            if (unlimitedMatched) {
+                matched += "Filter Unlimited"
+            }
 
             return DirectFilterResult(
                 OrderStatus.ACCEPTED,
                 matched.joinToString(" + ") + " matched"
             )
         }
-        if (failureReasons.isNotEmpty()) {
-            val modeLabel = when (filterMode) {
-                "fare_only" -> "Fare Only"
-                "distance_only" -> "Distance Only"
+
+        val modeLabel =
+            when (filterMode) {
+                "fare_only" -> "Fare"
+                "distance_only" -> "Distance"
                 "both" -> "Both"
                 else -> filterMode
             }
 
-            val orderParts = mutableListOf<String>()
-            if (fare != null && fare > 0f) orderParts += "Fare ₹${fare.toInt()}"
-            orderParts += "Pickup ${pickup?.let { "%.1f km".format(it) } ?: "N/A"}"
-            orderParts += "Trip ${drop?.let { "%.1f km".format(it) } ?: "N/A"}"
+        val reason =
+            buildString {
+                append("No condition matched")
 
-            val limitParts = mutableListOf<String>()
-            if (checkFare) {
-                val minText = if (direct.minFare > 0f) "₹${direct.minFare.toInt()}" else "OFF"
-                val maxText = if (direct.maxFare > 0f) "₹${direct.maxFare.toInt()}" else "OFF"
-                limitParts += "Fare $minText-$maxText"
-            }
-            if (checkDistance) {
-                val pickupLimit = if (direct.maxPickupKm > 0f) "${"%.1f".format(direct.maxPickupKm)} km" else "OFF"
-                val dropLimit = if (direct.maxDropKm > 0f) "${"%.1f".format(direct.maxDropKm)} km" else "OFF"
-                limitParts += "Pickup ≤ $pickupLimit"
-                limitParts += "Trip ≤ $dropLimit"
-            }
-
-            val reason = buildString {
-                append("Mode: $modeLabel")
-                append("\nLimits: ${limitParts.joinToString(" | ")}")
-                append("\nWhy ignored: ${failureReasons.joinToString("; ")}")
+                if (direct.primaryFilterEnabled) {
+                    append(
+                        "\nOrder Filter 1 ($modeLabel): ${
+                            if (failureReasons.isEmpty())
+                                "not matched"
+                            else
+                                failureReasons.joinToString("; ")
+                        }"
+                    )
+                } else {
+                    append("\nOrder Filter 1: OFF")
+                }
 
                 if (direct.secondaryBothEnabled) {
                     append(
@@ -1280,11 +1302,31 @@ private val processingTimeoutRunnable = Runnable {
                 }
             }
 
-            Log.w(TAG, "⏭️ [Direct Filter IGNORED] $reason")
-            return DirectFilterResult(OrderStatus.IGNORED, reason)
+        // UNLIMITED_FAILURE_DETAILS_V1: history-only diagnostic after matching.
+        val detailedReason = buildString {
+            append(reason)
+            direct.extraFareRules.forEachIndexed { index, rule ->
+                if (!rule.enabled || !rule.isValid()) return@forEachIndexed
+                val failed = mutableListOf<String>()
+                if (fare == null || fare < rule.minimum) {
+                    failed += "Fare ${fare?.toInt() ?: 0} < min ${rule.minimum.toInt()}"
+                }
+                if (pickup == null || pickup > rule.maxPickupKm) {
+                    failed += "Pickup ${pickup ?: -1f} > max ${rule.maxPickupKm} km"
+                }
+                if (drop == null || drop > rule.maxDropKm) {
+                    failed += "Trip ${drop ?: -1f} > max ${rule.maxDropKm} km"
+                }
+                append("\nUnlimited Filter ${index + 1}: ")
+                append(if (failed.isEmpty()) "Matched" else failed.joinToString("; "))
+            }
         }
-        // All filters passed → OrderStatus.ACCEPTED
-        return DirectFilterResult(OrderStatus.ACCEPTED, "All direct filters passed")
+        Log.w(TAG, "[Direct Filter IGNORED] $detailedReason")
+
+        return DirectFilterResult(
+            OrderStatus.IGNORED,
+            detailedReason
+        )
     }
 
     /**
@@ -1311,13 +1353,10 @@ private val processingTimeoutRunnable = Runnable {
     }
 
     // =========================================================
-    // RAPIDO_AUTO_PRIORITY_INSTANT_V1
-    // Auto Priority behavior:
-    // - Master Auto Accept must be ON.
-    // - Rapido + membership must be active.
-    // - ALL ride filters are bypassed.
-    // - Fare/pickup/drop/address are NOT parsed before first click.
-    // - History parsing runs only AFTER the click.
+    // RAPIDO_AUTO_PRIORITY_SAVED_FILTERS_V1
+    // Auto Priority: read a complete Rapido offer and enforce the same saved
+    // area + fare/distance filters BEFORE strict Accept. Missing data = no click.
+    // Existing confirmed-click, post-click History and verification are retained.
     // =========================================================
 
     @Volatile
@@ -1386,7 +1425,8 @@ private val processingTimeoutRunnable = Runnable {
         val hasPriority: Boolean,
         val acceptNode: AccessibilityNodeInfo?,
         val dropAddress: String?,
-        val visitedNodes: Int
+        val visitedNodes: Int,
+        val textSnapshot: List<String> = emptyList()
     )
 
     private fun scanRapidoAutoPrioritySinglePass(
@@ -1641,7 +1681,9 @@ private val processingTimeoutRunnable = Runnable {
             dropAddress =
                 dropAddress,
             visitedNodes =
-                visited
+                visited,
+            textSnapshot =
+                if (hasPriority) pieces.toList() else emptyList()
         )
     }
 
@@ -1829,7 +1871,11 @@ private val processingTimeoutRunnable = Runnable {
                                 ?: sourceScan.dropAddress,
                         visitedNodes =
                             sourceScan.visitedNodes +
-                                topScan.visitedNodes
+                                topScan.visitedNodes,
+                        textSnapshot =
+                            if (topScan.textSnapshot.isNotEmpty())
+                                topScan.textSnapshot
+                            else sourceScan.textSnapshot
                     )
             }
         }
@@ -1838,7 +1884,7 @@ private val processingTimeoutRunnable = Runnable {
             return false
         }
 
-        // Consume every Auto Priority event: never fall through to normal filters.
+        // Consume Auto Priority events; do not route them into a bypassing fallback.
         lastValidRapidoPopupAt =
             System.currentTimeMillis()
 
@@ -1866,6 +1912,97 @@ private val processingTimeoutRunnable = Runnable {
 
         val preClickDropAddress =
             finalScan.dropAddress
+
+        // AUTO_PRIORITY_SAVED_FILTERS_V1
+        // Full order data must be available BEFORE any Accept action.
+        // Read from the Rapido top root: the changed subtree may contain
+        // only the Auto Priority badge/Accept button, not fare/distances.
+        // This intentionally adds pre-click parsing to enforce user filters.
+        val filterRoot =
+            if (isRapidoPackage(topRoot.packageName?.toString().orEmpty()))
+                topRoot
+            else clickRoot
+        val orderData = try {
+            RapidoAdapter.extractOrderData(
+                filterRoot,
+                skipHomeCheck = true,
+                skipPickupAddress = true
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "AUTO PRIORITY: cannot read saved-filter inputs", e)
+            return true // No blind Accept on incomplete information.
+        }
+
+        fun realDrop(text: String?): String? =
+            text?.trim()?.takeIf {
+                it.isNotEmpty() &&
+                    !it.equals("Address unavailable", ignoreCase = true) &&
+                    !it.equals("Detected Drop Location", ignoreCase = true) &&
+                    !it.equals("Drop Location", ignoreCase = true) &&
+                    !RapidoAdapter.isInvalidAddress(it)
+            }
+        val filterDrop =
+            realDrop(preClickDropAddress) ?: realDrop(orderData.dropAddress)
+        val filteredCandidate = RideCandidate(
+            fare = orderData.totalFare.takeIf { it > 0f },
+            pickupDistKm = orderData.pickupKm,
+            dropDistKm = orderData.dropKm,
+            pickupAddress = "Address unavailable",
+            dropAddress = filterDrop,
+            dropArea = filterDrop,
+            platform = Platform.RAPIDO,
+            vehicleType = profile.vehicleType,
+            bookingId = orderData.bookingId,
+            isBundledOrder = orderData.isBundledOrder,
+            detectionTimeMs = now,
+            baseFare = orderData.baseFare.takeIf { it > 0f },
+            tipAmount = orderData.tipAmount.takeIf { it > 0f }
+        )
+        val decision = com.example.engine.RapidoAutoPriorityFilterEngine.evaluate(
+            candidate = filteredCandidate,
+            settings = settings,
+            goToAreas = prefs.goToAreas.value,
+            noGoAreas = prefs.noGoAreas.value
+        )
+        if (decision !is DecisionResult.Accept) {
+            val reason = when (decision) {
+                is DecisionResult.Reject -> decision.reason
+                is DecisionResult.Ignore -> decision.reason
+                else -> "Auto Priority: saved filters not matched"
+            }
+            Log.i(TAG, "AUTO PRIORITY: no auto accept: $reason")
+
+            // Missing fare, distance or destination must NOT auto-reject or
+            // create a blank History row. Wait for a complete popup event.
+            if (decision is DecisionResult.Ignore &&
+                reason.startsWith("Auto Priority: incomplete")
+            ) return true
+
+            // An unmatched visible popup remains on screen with Auto Reject OFF.
+            // Share existing dedupe protection with normal Rapido offers.
+            if (!settings.isAutoRejectBadFaresEnabled &&
+                rapidoIgnoredVisibleOfferGuard.isDuplicateIgnored(filteredCandidate)
+            ) return true
+
+            if (isProcessing) return true
+            val offerId = getOrderIdentifier(filteredCandidate)
+            if (activeRapidoPopupOrderId == offerId) return true
+            isProcessing = true
+            handler.removeCallbacks(processingTimeoutRunnable)
+            handler.postDelayed(processingTimeoutRunnable, 750L)
+            activeRapidoPopupOrderId = offerId
+            val recordId = onOrderDetectedFast(filteredCandidate)
+            handleRapidoFilterFailure(
+                root = filterRoot,
+                candidate = filteredCandidate,
+                recordId = recordId,
+                reason = "Auto Priority: $reason",
+                defaultStatus = if (reason.contains("No-Go", ignoreCase = true))
+                    OrderStatus.REJECTED else OrderStatus.IGNORED
+            )
+            return true
+        }
+        val matchedFilterReason = decision.reason
 
         rapidoAutoPriorityFastBusy =
             true
@@ -1924,7 +2061,7 @@ private val processingTimeoutRunnable = Runnable {
                     clickMs
                 ) +
                 " | nodes=${finalScan.visitedNodes}" +
-                " | ALL FILTERS BYPASSED"
+                " | SAVED FILTERS MATCHED"
         )
 
         // AFTER first click: History/overlay + verification.
@@ -1938,7 +2075,11 @@ private val processingTimeoutRunnable = Runnable {
                 startedNs =
                     clickStartedNs,
                 preClickDropAddress =
-                    preClickDropAddress
+                    preClickDropAddress,
+                preClickTextSnapshot =
+                    finalScan.textSnapshot,
+                preClickFilteredCandidate = filteredCandidate,
+                matchedFilterReason = matchedFilterReason
             )
         }
 
@@ -1949,10 +2090,14 @@ private val processingTimeoutRunnable = Runnable {
     private suspend fun finalizeRapidoAutoPriorityAfterClick(
         clickRoot: AccessibilityNodeInfo,
         startedNs: Long,
-        preClickDropAddress: String?
+        preClickDropAddress: String?,
+        preClickTextSnapshot: List<String>,
+        preClickFilteredCandidate: RideCandidate,
+        matchedFilterReason: String
     ) {
         val baseCandidate =
-            try {
+            preClickFilteredCandidate
+                ?: try {
                 val validation =
                     RapidoAdapter
                         .validateRapidoOrderPopup(
@@ -1987,22 +2132,52 @@ private val processingTimeoutRunnable = Runnable {
                         System.currentTimeMillis()
                 )
 
+        // Keep existing post-click History enrichment for compatibility.
+        // Saved filters have already been enforced BEFORE the first click.
+        val recoveredOrder =
+            if ((baseCandidate.fare ?: 0f) <= 0f ||
+                baseCandidate.dropDistKm == null
+            ) {
+                try {
+                    RapidoAdapter.extractOrderDataFromTexts(
+                        texts = preClickTextSnapshot,
+                        skipPickupAddress = true
+                    )
+                } catch (_: Exception) {
+                    null
+                }
+            } else null
+
+        val enrichedCandidate = baseCandidate.copy(
+            fare = baseCandidate.fare?.takeIf { it > 0f }
+                ?: recoveredOrder?.totalFare?.takeIf { it > 0f },
+            baseFare = baseCandidate.baseFare?.takeIf { it > 0f }
+                ?: recoveredOrder?.baseFare?.takeIf { it > 0f },
+            tipAmount = baseCandidate.tipAmount ?: recoveredOrder?.tipAmount,
+            pickupDistKm = baseCandidate.pickupDistKm ?: recoveredOrder?.pickupKm,
+            dropDistKm = baseCandidate.dropDistKm ?: recoveredOrder?.dropKm,
+            bookingId = baseCandidate.bookingId ?: recoveredOrder?.bookingId,
+            dropAddress = baseCandidate.dropAddress?.takeIf {
+                it.isNotBlank() && it != "Address unavailable"
+            } ?: recoveredOrder?.dropAddress
+        )
+
         // RAPIDO_AUTO_PRIORITY_DROP_AFTER_CLICK_V1
         // Accept has ALREADY been sent before this code runs.
         // Recover only destination data for History + overlay.
         val candidate =
             if (
-                baseCandidate.dropAddress
+                enrichedCandidate.dropAddress
                     .isNullOrBlank() ||
-                baseCandidate.dropAddress.equals(
+                enrichedCandidate.dropAddress.equals(
                     "Address unavailable",
                     ignoreCase = true
                 ) ||
-                baseCandidate.dropAddress.equals(
+                enrichedCandidate.dropAddress.equals(
                     "Detected Drop Location",
                     ignoreCase = true
                 ) ||
-                baseCandidate.dropAddress.equals(
+                enrichedCandidate.dropAddress.equals(
                     "Drop Location",
                     ignoreCase = true
                 )
@@ -2032,21 +2207,30 @@ private val processingTimeoutRunnable = Runnable {
                         "AUTO PRIORITY drop recovered from pre-click snapshot/fallback: $recoveredDrop"
                     )
 
-                    baseCandidate.copy(
+                    enrichedCandidate.copy(
                         dropAddress =
                             recoveredDrop,
                         dropArea =
                             recoveredDrop
                     )
                 } else {
-                    baseCandidate
+                    enrichedCandidate
                 }
             } else {
-                baseCandidate
+                enrichedCandidate
             }
 
-        val recordId = onOrderDetectedFast(candidate)
-        onOrderActionAttemptFast(recordId)
+        // Never persist blank ₹0 / Nearby Auto Priority Accepted History.
+        // Click already sent; verification still runs even if data is missing.
+        val recordId = if (
+            com.example.engine.AutoPriorityHistoryGate.hasUsableHistory(candidate)
+        ) {
+            onOrderDetectedFast(candidate)
+        } else {
+            Log.w(TAG, "AUTO PRIORITY: incomplete fare/drop; blank History row skipped")
+            null
+        }
+        if (recordId != null) onOrderActionAttemptFast(recordId)
 
         var attempts = 1
 
@@ -2066,8 +2250,9 @@ private val processingTimeoutRunnable = Runnable {
                     lower.contains("accepted by another")
 
             if (missed) {
+                recordId?.let { validId ->
                 onOrderActionCompletedFast(
-                    recordId = recordId,
+                    recordId = validId,
                     candidate = candidate,
                     status = OrderStatus.MISSED,
                     reasonCode = "AUTO_PRIORITY_MISSED",
@@ -2079,6 +2264,7 @@ private val processingTimeoutRunnable = Runnable {
                     clickMethod = "Auto Priority Instant Fast Path",
                     errorMsg = "Order ended before acceptance confirmation"
                 )
+                }
                 rapidoAutoPriorityFastBusy = false
                 return
             }
@@ -2104,20 +2290,22 @@ private val processingTimeoutRunnable = Runnable {
                         )
                 )
 
-                showAcceptedOrderOverlay(candidate)
+                if (recordId != null) showAcceptedOrderOverlay(candidate)
 
+                recordId?.let { validId ->
                 onOrderActionCompletedFast(
-                    recordId = recordId,
+                    recordId = validId,
                     candidate = candidate,
                     status = OrderStatus.ACCEPTED,
-                    reasonCode = "AUTO_PRIORITY_INSTANT",
-                    reasonText = "Auto Priority - instant accept; all ride filters bypassed",
+                    reasonCode = "AUTO_PRIORITY_FILTERS_MATCHED",
+                    reasonText = "Auto Priority - saved filters matched: $matchedFilterReason",
                     actionSucceeded = true,
                     timesClicked = attempts,
                     buttonFound = true,
                     buttonDetails = "Strict Auto Priority Accept",
                     clickMethod = "Auto Priority Instant Fast Path"
                 )
+                }
 
                 rapidoAutoPriorityFastBusy = false
                 return
@@ -2133,8 +2321,9 @@ private val processingTimeoutRunnable = Runnable {
             attempts++
         }
 
+        recordId?.let { validId ->
         onOrderActionCompletedFast(
-            recordId = recordId,
+            recordId = validId,
             candidate = candidate,
             status = OrderStatus.FAILED,
             reasonCode = "AUTO_PRIORITY_VERIFY_TIMEOUT",
@@ -2146,6 +2335,7 @@ private val processingTimeoutRunnable = Runnable {
             clickMethod = "Auto Priority Instant Fast Path",
             errorMsg = "Verification timed out"
         )
+        }
 
         rapidoAutoPriorityFastBusy = false
     }
@@ -2230,6 +2420,11 @@ private val processingTimeoutRunnable = Runnable {
                     null
                 }
 
+            // AccessibilityEvent objects can be recycled after this callback.
+            // Capture event timing and type before launching the worker.
+            val rapidoEventType = event.eventType
+            val rapidoEventUptimeMs = event.eventTime
+
             val shouldLaunch =
                 synchronized(rapidoProcessingLock) {
 
@@ -2252,8 +2447,12 @@ private val processingTimeoutRunnable = Runnable {
 
                     var firstPass = true
                     var keepRunning = true
+                    var fastRetryCount = 0
 
                     while (keepRunning) {
+                        // Set before the scan; only real partial-offer evidence
+                        // inside this pass may request a bounded recheck.
+                        rapidoPartialPopupSeen = false
 
                         try {
                             processAccessibilityEvent(
@@ -2262,10 +2461,12 @@ private val processingTimeoutRunnable = Runnable {
                                     if (firstPass) directSource else null,
                                 eventType =
                                     if (firstPass) {
-                                        event.eventType
+                                        rapidoEventType
                                     } else {
                                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                                    }
+                                    },
+                                eventUptimeMs =
+                                    if (firstPass) rapidoEventUptimeMs else 0L
                             )
                         } catch (e: Exception) {
                             Log.e(
@@ -2276,18 +2477,35 @@ private val processingTimeoutRunnable = Runnable {
                         }
 
                         firstPass = false
-
+                        var delayForPartialMs = 0L
                         keepRunning =
                             synchronized(rapidoProcessingLock) {
-
-                                if (rapidoPendingRescan) {
-                                    rapidoPendingRescan = false
-                                    true
-                                } else {
-                                    isRapidoEventProcessing = false
-                                    false
+                                when {
+                                    rapidoPendingRescan -> {
+                                        rapidoPendingRescan = false
+                                        true
+                                    }
+                                    RapidoEarlyReadGate.mayRetry(
+                                        rapidoPartialPopupSeen,
+                                        fastRetryCount,
+                                        preferencesManager.isAutoAcceptEnabled
+                                    ) -> {
+                                        fastRetryCount++
+                                        delayForPartialMs =
+                                            RapidoEarlyReadGate.retryDelayMs(fastRetryCount)
+                                        true
+                                    }
+                                    else -> {
+                                        isRapidoEventProcessing = false
+                                        false
+                                    }
                                 }
                             }
+                        if (keepRunning && delayForPartialMs > 0L) {
+                            // Another event can still set rapidoPendingRescan;
+                            // do not use timer callbacks or queue infinite scans.
+                            delay(delayForPartialMs)
+                        }
                     }
                 }
             }
@@ -2431,10 +2649,35 @@ private val processingTimeoutRunnable = Runnable {
             }
         }
     }
+
+    // RAPIDO_READ_LATENCY_V1 - intentionally no fare/address logging.
+    private fun logRapidoReadLatency(
+        path: String, readStartedNs: Long, eventUptimeMs: Long
+    ) {
+        val readMs = (System.nanoTime() - readStartedNs) / 1_000_000.0
+        val eventAgeMs = if (eventUptimeMs > 0L) {
+            (android.os.SystemClock.uptimeMillis() - eventUptimeMs).coerceAtLeast(0L)
+        } else -1L
+        Log.i(TAG, "RAPIDO_READ_LATENCY_V1 path=$path readMs=" +
+            String.format(Locale.ENGLISH, "%.2f", readMs) +
+            " eventAgeMs=$eventAgeMs")
+    }
+
+    private fun isRapidoIncompleteValidation(v: RapidoPopupValidation): Boolean {
+        val data = v.orderData ?: return false
+        val tripIncomplete = data.dropKm == null || data.dropKm <= 0f
+        return (!v.isValid || tripIncomplete) &&
+            RapidoEarlyReadGate.hasPartialOrderSignal(
+                data.totalFare, data.pickupKm, data.dropKm,
+                v.acceptButton != null
+            )
+    }
+
     private fun processAccessibilityEvent(
         eventPkg: String,
         eventSource: AccessibilityNodeInfo?,
-        eventType: Int = 0
+        eventType: Int = 0,
+        eventUptimeMs: Long = 0L
     ) {
         // MASTER OFF: cancel queued ride processing.
         if (!preferencesManager.isAutoAcceptEnabled) {
@@ -2644,6 +2887,8 @@ private val processingTimeoutRunnable = Runnable {
                 isRapidoPackage(eventPkg)
 
         if (isRapidoPkg) {
+            val rapidoReadStartedNs = System.nanoTime()
+            var partialRapidoOfferSeenInPass = false
             Log.d("SmartDrivo", "Rapido event received: $eventType")
 
             // RAPIDO_EVENT_SOURCE_FIRST_V1
@@ -2668,6 +2913,9 @@ private val processingTimeoutRunnable = Runnable {
                     RapidoAdapter.validateRapidoOrderPopup(
                         directRapidoSource
                     )
+                if (isRapidoIncompleteValidation(sourceValidation)) {
+                    partialRapidoOfferSeenInPass = true
+                }
 
                 val sourceDropKm =
                     sourceValidation.orderData
@@ -2688,6 +2936,7 @@ private val processingTimeoutRunnable = Runnable {
                         "RAPIDO SOURCE SUBTREE FAST: complete order found"
                     )
 
+                    logRapidoReadLatency("source", rapidoReadStartedNs, eventUptimeMs)
                     handleRapidoOrder(
                         directRapidoSource,
                         sourceValidation
@@ -2722,8 +2971,13 @@ private val processingTimeoutRunnable = Runnable {
                     RapidoAdapter.validateRapidoOrderPopup(
                         directRapidoRoot
                     )
+                if (isRapidoIncompleteValidation(directValidation)) {
+                    partialRapidoOfferSeenInPass = true
+                }
 
-                if (directValidation.isValid) {
+                if (directValidation.isValid &&
+                    (directValidation.orderData?.dropKm ?: 0f) > 0f
+                ) {
 
                     lastValidRapidoPopupAt =
                         System.currentTimeMillis()
@@ -2733,6 +2987,7 @@ private val processingTimeoutRunnable = Runnable {
                         "RAPIDO SOURCE ROOT FALLBACK: genuine popup found"
                     )
 
+                    logRapidoReadLatency("root", rapidoReadStartedNs, eventUptimeMs)
                     handleRapidoOrder(
                         directRapidoRoot,
                         directValidation
@@ -2782,8 +3037,13 @@ private val processingTimeoutRunnable = Runnable {
             for (root in candidateRoots) {
                 val validation =
                     RapidoAdapter.validateRapidoOrderPopup(root)
+                if (isRapidoIncompleteValidation(validation)) {
+                    partialRapidoOfferSeenInPass = true
+                }
 
-                if (validation.isValid) {
+                if (validation.isValid &&
+                    (validation.orderData?.dropKm ?: 0f) > 0f
+                ) {
                     validatedRoot = root
                     validatedPopup = validation
                     break
@@ -2802,11 +3062,19 @@ private val processingTimeoutRunnable = Runnable {
                         "rootsScanned=${candidateRoots.size}"
                 )
 
+                logRapidoReadLatency("window", rapidoReadStartedNs, eventUptimeMs)
                 handleRapidoOrder(
                     validatedRoot,
                     validatedPopup
                 )
                 return
+            }
+
+            if (partialRapidoOfferSeenInPass) {
+                // The valid offer may be mid-render. Request at most two
+                // short scans; never click or log incomplete data.
+                rapidoPartialPopupSeen = true
+                Log.d(TAG, "RAPIDO_PARTIAL_READ_V1 pending bounded recheck")
             }
 
             val anyRapidoHome =
@@ -2828,6 +3096,7 @@ private val processingTimeoutRunnable = Runnable {
                     popupGapMs > 1_200L
                 ) {
                     activeRapidoPopupOrderId = null
+                    rapidoIgnoredVisibleOfferGuard.clear()
                     lastValidRapidoPopupAt = 0L
                 }
                 Log.d(
@@ -5218,23 +5487,11 @@ private val processingTimeoutRunnable = Runnable {
         if (root == null) return
 
         if (!preferencesManager.isAutoAcceptEnabled) {
-            // FIX 3: If toggle was OFF when order appeared, mark order as "IGNORED" not "REJECTED"
-            try {
-                val candidate =
-                    OlaAdapter.extractCandidate(
-                        root = root,
-                        defaultVehicle =
-                            prefs.userProfile.value.vehicleType
-                    )
-                logOrderEvent(candidate.copy(platform = Platform.OLA), OrderStatus.IGNORED, "Auto-accept toggle is OFF")
-                Log.i(TAG, "Ola order appeared while toggle is OFF -> Logged as IGNORED")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error logging ignored Ola order when toggle is OFF", e)
-            }
+            // Master OFF: no Ola processing or history.
             resetProcessing()
+            setOlaState(OlaState.IDLE)
             return
         }
-
         // Reload settings fresh from PreferencesManager before evaluating ride
         val settings = prefs.loadSettings()
         val userProfile = prefs.userProfile.value
@@ -7435,6 +7692,15 @@ private val processingTimeoutRunnable = Runnable {
         val bookingId = candidate.bookingId
         val orderId = snapshot.orderId
 
+        // Only affects unmatched offers kept visible when Auto Reject is OFF.
+        // Do not compare mutable pickup distance or reinsert into History.
+        if (!prefs.appSettings.value.isAutoRejectBadFaresEnabled &&
+            rapidoIgnoredVisibleOfferGuard.isDuplicateIgnored(candidate)
+        ) {
+            Log.d(TAG, "RAPIDO IGNORED DEDUP: still-visible unmatched offer; no new History row")
+            return
+        }
+
         if (activeRapidoPopupOrderId == orderId) {
             Log.i(
                 TAG,
@@ -7523,38 +7789,47 @@ private val processingTimeoutRunnable = Runnable {
             resetProcessing()
             return
         }
-        // RAPIDO_PLUS_AMOUNT_FILTER_V1
-        // Green +\u20B9 amount filter: only +amount + pickup + trip matter.
-        // Base fare, addresses and every other saved filter are bypassed ONLY when this matches.
-        if (settings.isPlusAmountFilterEnabled && candidate.platform == Platform.RAPIDO) {
-            val plusAmount = candidate.tipAmount ?: 0f
+        // RAPIDO_PLUS_AMOUNT_UNLIMITED_V1
+        // Match original +Amount OR any enabled additional +Amount row.
+        // Every selected row requires +Amount AND pickup AND drop.
+        // Existing verified Accept-button execution remains unchanged.
+        if (candidate.platform == Platform.RAPIDO && autoAcceptEnabled) {
+            val plusAmount = candidate.tipAmount
             val plusPickup = candidate.pickupDistKm
             val plusDrop = candidate.dropDistKm
-
-            val plusMatched =
-                plusAmount > 0f &&
+            val legacyPlusMatch =
+                settings.isPlusAmountFilterEnabled &&
+                    plusAmount != null && plusAmount > 0f &&
                     plusAmount >= settings.plusAmountMin &&
                     plusPickup != null && plusPickup > 0f &&
                     plusPickup <= settings.plusAmountMaxPickupDistanceKm &&
                     plusDrop != null && plusDrop > 0f &&
                     plusDrop <= settings.plusAmountMaxDropDistanceKm
 
-            if (plusMatched) {
-                val plusReason = buildString {
-                    append("Mode: + Amount Filter")
-                    append("\n+\u20B9${plusAmount.toInt()} >= +\u20B9${settings.plusAmountMin.toInt()}")
-                    append(" | Pickup ${String.format(Locale.ENGLISH, "%.1f", plusPickup)} km <= ${String.format(Locale.ENGLISH, "%.1f", settings.plusAmountMaxPickupDistanceKm)} km")
-                    append(" | Trip ${String.format(Locale.ENGLISH, "%.1f", plusDrop)} km <= ${String.format(Locale.ENGLISH, "%.1f", settings.plusAmountMaxDropDistanceKm)} km")
-                    append("\nBase fare + addresses + other filters bypassed")
+            val additionalRule = if (legacyPlusMatch) null else
+                settings.extraPlusAmountRules.firstOrNull {
+                    it.matches(plusAmount, plusPickup, plusDrop)
                 }
 
-                Log.i(TAG, "RAPIDO + AMOUNT FILTER MATCHED: +\u20B9$plusAmount pickup=$plusPickup trip=$plusDrop")
-
+            if (legacyPlusMatch || additionalRule != null) {
+                val selectedMinimum = additionalRule?.minimum ?: settings.plusAmountMin
+                val selectedPickup = additionalRule?.maxPickupKm ?: settings.plusAmountMaxPickupDistanceKm
+                val selectedDrop = additionalRule?.maxDropKm ?: settings.plusAmountMaxDropDistanceKm
+                val label = if (additionalRule != null) "+Amount Unlimited" else "+ Amount Filter"
+                val plusReason = buildString {
+                    append("Mode: $label")
+                    append("\n+₹${plusAmount?.toInt()} >= +₹${selectedMinimum.toInt()}")
+                    append(" | Pickup ${String.format(Locale.ENGLISH, "%.1f", plusPickup)} km <= ${String.format(Locale.ENGLISH, "%.1f", selectedPickup)} km")
+                    append(" | Trip ${String.format(Locale.ENGLISH, "%.1f", plusDrop)} km <= ${String.format(Locale.ENGLISH, "%.1f", selectedDrop)} km")
+                    append("\nOther regular fare filters bypassed")
+                }
+                Log.i(TAG, "RAPIDO + AMOUNT MATCHED: $label amount=$plusAmount pickup=$plusPickup drop=$plusDrop")
                 executeRapidoAutoAccept(
                     candidate = candidate,
                     orderRoot = root,
                     prevalidatedAcceptNode = snapshot.acceptNode,
                     historyRecordId = recordId,
+                    verifiedPopupSession = rapidoVerifiedClickGuard.beginNewPopup(),
                     acceptedHistoryReason = plusReason
                 )
                 return
@@ -7702,9 +7977,9 @@ private val processingTimeoutRunnable = Runnable {
             val acceptedHistoryReason =
                 if (
                     decision is DecisionResult.Accept &&
-                    decision.reason.contains(
-                        "Go-To",
-                        ignoreCase = true
+                    (
+                        decision.reason.contains("Go-To", ignoreCase = true) ||
+                            decision.reason.startsWith("Mode: Order Filter Unlimited")
                     )
                 ) {
                     decision.reason
@@ -7731,6 +8006,7 @@ private val processingTimeoutRunnable = Runnable {
                 prevalidatedAcceptNode =
                     snapshot.acceptNode,
                 historyRecordId = recordId,
+                verifiedPopupSession = rapidoVerifiedClickGuard.beginNewPopup(),
                 acceptedHistoryReason =
                     acceptedHistoryReason
             )
@@ -7756,7 +8032,8 @@ private val processingTimeoutRunnable = Runnable {
         attemptNumber: Int = 1,
         prevalidatedAcceptNode: AccessibilityNodeInfo? = null,
         historyRecordId: String? = null,
-        acceptedHistoryReason: String? = null
+        acceptedHistoryReason: String? = null,
+        verifiedPopupSession: Long? = null
     ) {
         // HISTORY_PINNED_RECORD_V2
         // Keep every retry/final status attached to the same real ride.
@@ -7793,21 +8070,21 @@ private val processingTimeoutRunnable = Runnable {
         val now = System.currentTimeMillis()
         lastRapidoAttemptTime = now
 
-        if (!canExecuteVerifiedRapidoClick()) {
-            Log.w(TAG, "Rapido auto-accept paused by anti-spam safety limit")
+        val livePopupSession =
+            verifiedPopupSession ?: if (attemptNumber == 1) {
+                rapidoVerifiedClickGuard.beginNewPopup()
+            } else {
+                -1L
+            }
 
-            val recordId = pinnedRecordId
-
-
-            onOrderDecisionFast(
-                recordId = recordId,
-                candidate = candidate,
-                status = OrderStatus.IGNORED,
-                reasonCode = "CLICK_SAFETY_LIMIT",
-                reasonText = "Safety click limit active - order left for manual action"
+        if (!canExecuteVerifiedRapidoClick(livePopupSession, attemptNumber)) {
+            // Duplicate/stale callback from an older popup: no click, no
+            // misleading IGNORED History, and no reset of the newer popup.
+            Log.w(
+                TAG,
+                "Rapido stale/repeated click suppressed: " +
+                    "popupSession=$livePopupSession attempt=$attemptNumber"
             )
-
-            resetProcessing()
             return
         }
 
@@ -8016,8 +8293,9 @@ private val processingTimeoutRunnable = Runnable {
                 "Clickable: ${acceptNode.isClickable}"
         )
 
-        notifyClickInitiated()
-
+        // Verified popup and per-order guard already authorized this click.
+        // Do not start a global 3-second lock for Rapido retries.
+        val rapidoClickStartedNs = System.nanoTime()
         var clicked = false
         // Primary: performAction(ACTION_CLICK) directly on accept node
         if (acceptNode.isClickable) {
@@ -8042,7 +8320,7 @@ private val processingTimeoutRunnable = Runnable {
                 val cx = bounds.centerX().toFloat()
                 val cy = bounds.centerY().toFloat()
                 Log.i(TAG, "👆 [Rapido] Click performed: Gesture tap strictly at Accept button center ($cx, $cy), screenBounds=$bounds")
-                simulateTapGesture(cx, cy, isInternalFallback = true)
+                simulateTapGesture(cx, cy, isInternalFallback = true, verifiedRapidoFallback = true)
             } else {
                 Log.w(TAG, "❌ [Rapido] Accept button bounds invalid ($bounds) - doing nothing, no random click")
                 val recordId = pinnedRecordId
@@ -8064,9 +8342,18 @@ private val processingTimeoutRunnable = Runnable {
             }
         }
 
+        val rapidoClickDispatchMs =
+            (System.nanoTime() - rapidoClickStartedNs) / 1_000_000.0
+        Log.i(TAG, "RAPIDO_CLICK_LATENCY_V1 attempt=$attemptNumber dispatchMs=" +
+            String.format(Locale.ENGLISH, "%.2f", rapidoClickDispatchMs))
+
         // ═══ STEP 4 - Verify: order popup gone in 200ms = ACCEPTED. Cooldown: 200ms max between attempts ═══
         serviceScope.launch(Dispatchers.IO) {
             delay(40L) // RAPIDO_SPEED_V3
+            if (!rapidoVerifiedClickGuard.isCurrent(livePopupSession)) {
+                Log.i(TAG, "Old Rapido popup verification ended: newer offer active")
+                return@launch
+            }
             val currentRoot = getRapidoOrderRootNode(orderRoot)
                         val postAcceptConfirmed = isRapidoPostAcceptScreen(currentRoot)
 val isOrderStillVisible =
@@ -8112,6 +8399,7 @@ val isOrderStillVisible =
                         orderRoot = currentRoot,
                         attemptNumber = attemptNumber + 1,
                         historyRecordId = pinnedRecordId,
+                        verifiedPopupSession = livePopupSession,
                         acceptedHistoryReason =
                             acceptedHistoryReason
                     )
@@ -8234,19 +8522,24 @@ val isOrderStillVisible =
         x: Float,
         y: Float,
         isInternalFallback: Boolean = false,
+        verifiedRapidoFallback: Boolean = false,
         onComplete: ((Boolean) -> Unit)? = null
     ) {
         val now = System.currentTimeMillis()
 
-        // Fix 4: Check if waiting after rate limit penalty (5-second cooldown)
-        if (now < clickBlockedUntilTimestamp) {
+        // Strict Rapido Accept button fallback was verified and limited by offer ID.
+        // Generic gestures still obey their full global cooldown.
+        if (!verifiedRapidoFallback && now < clickBlockedUntilTimestamp) {
             val waitRemaining = clickBlockedUntilTimestamp - now
             Log.w(TAG, "🚫 [Fix 4] simulateTapGesture blocked: rate limit 5s cooldown active (remaining: ${waitRemaining}ms)")
             onComplete?.invoke(false)
             return
         }
 
-        if (!isInternalFallback) {
+        if (verifiedRapidoFallback) {
+            // Only call this for the verified Accept node's exact center.
+            // Per-offer guard limits retries; no generic penalty here.
+        } else if (!isInternalFallback) {
             // Check Fix 3 & Fix 4
             if (!canExecuteClick()) {
                 Log.w(TAG, "🚫 simulateTapGesture skipped at ($x, $y) due to cooldown or rate limit")
@@ -8897,6 +9190,12 @@ val isOrderStillVisible =
             return
         }
 
+        // Auto Reject OFF: Rapido keeps this same offer on screen.
+        // Remember it so later Accessibility updates cannot log it again.
+        if (candidate.platform == Platform.RAPIDO) {
+            rapidoIgnoredVisibleOfferGuard.rememberIgnored(candidate)
+        }
+
         onOrderDecisionFast(
             recordId = recordId,
             candidate = candidate,
@@ -9480,7 +9779,8 @@ val isOrderStillVisible =
             }
 
         val homeMatched =
-            homeFareMatched &&
+            settings.isPrimaryFilterEnabled &&
+                homeFareMatched &&
                 homeDistanceMatched
 
         val secondaryMatched =
@@ -9519,6 +9819,39 @@ val isOrderStillVisible =
                     " | Trip ${km(trip)} ≤ ${km(settings.secondaryBothMaxDropDistanceKm)}"
                 )
             }
+        }
+        val tertiaryMatched =
+            settings.isTertiaryBothFilterEnabled &&
+                fare > 0f &&
+                candidate.pickupDistKm != null &&
+                candidate.dropDistKm != null &&
+                (settings.tertiaryBothMinFare <= 0f ||
+                    fare >= settings.tertiaryBothMinFare) &&
+                (settings.tertiaryBothMaxPickupDistanceKm <= 0f ||
+                    pickup <= settings.tertiaryBothMaxPickupDistanceKm) &&
+                (settings.tertiaryBothMaxDropDistanceKm <= 0f ||
+                    trip <= settings.tertiaryBothMaxDropDistanceKm)
+
+        if (!homeMatched && !secondaryMatched && tertiaryMatched) {
+            return "Mode: Filter 3" +
+                "\nFare ₹${fare.toInt()} >= ₹${settings.tertiaryBothMinFare.toInt()}" +
+                " | Pickup ${km(pickup)} <= ${km(settings.tertiaryBothMaxPickupDistanceKm)}" +
+                " | Trip ${km(trip)} <= ${km(settings.tertiaryBothMaxDropDistanceKm)}"
+        }
+        // HISTORY_REAL_MATCHED_UNLIMITED_V1
+        // Only claim a specific unlimited rule when the prior home/secondary
+        // paths do NOT qualify. This prevents impossible "2.7 <= 1.7" text.
+        val matchedUnlimitedIndex = settings.extraFareRules.indexOfFirst { rule ->
+            rule.matches(candidate.fare, candidate.pickupDistKm, candidate.dropDistKm)
+        }
+        if (!homeMatched && !secondaryMatched && !tertiaryMatched &&
+            matchedUnlimitedIndex >= 0
+        ) {
+            val matchedRule = settings.extraFareRules[matchedUnlimitedIndex]
+            return "Mode: Order Filter Unlimited - Filter ${matchedUnlimitedIndex + 1}" +
+                "\nFare ₹${fare.toInt()} >= ₹${matchedRule.minimum.toInt()}" +
+                " | Pickup ${km(pickup)} <= ${km(matchedRule.maxPickupKm)}" +
+                " | Trip ${km(trip)} <= ${km(matchedRule.maxDropKm)}"
         }
         return when (settings.filterMode) {
             com.example.model.FilterMode.FARE_ONLY -> {

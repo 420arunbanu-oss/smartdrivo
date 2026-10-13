@@ -37,15 +37,12 @@ fun SecurityLockScreen(
     offlineVerificationExpired: Boolean = false,
     sessionInvalidated: Boolean = false,
     sessionReason: String = "",
-    onRequestDeviceChange: () -> Unit,
+
     onLogout: () -> Unit
 ) {
     // BLOCKED_USER_DEVICE_BLACKLIST_V1
     val accountBlocked =
         profile.isBlocked
-
-    val deviceBlacklisted =
-        profile.isDeviceBlacklisted
 
     val adminLocked =
         !profile.isActive
@@ -54,9 +51,6 @@ fun SecurityLockScreen(
         when {
             accountBlocked ->
                 "Account Blocked"
-
-            deviceBlacklisted ->
-                "Device Blocked"
 
             adminLocked ->
                 "SmartDrivo Locked"
@@ -68,7 +62,7 @@ fun SecurityLockScreen(
                 "Internet Verification Required"
 
             else ->
-                "Device Not Authorized"
+                "Account Verification Required"
         }
 
     val message =
@@ -77,11 +71,6 @@ fun SecurityLockScreen(
                 profile.blockReason
                     .takeIf { it.isNotBlank() }
                     ?: "This SmartDrivo account has been permanently blocked by SmartDrivo Admin."
-
-            deviceBlacklisted ->
-                profile.deviceBlacklistReason
-                    .takeIf { it.isNotBlank() }
-                    ?: "This phone has been blocked from using SmartDrivo."
 
             adminLocked ->
                 "This account has been locked by SmartDrivo Admin. Auto Accept and assistant functions are disabled."
@@ -97,7 +86,7 @@ fun SecurityLockScreen(
                 "SmartDrivo could not verify this account within the offline grace period. Connect to the internet. Access will restore automatically after server verification."
 
             else ->
-                "This SmartDrivo account is already linked to another phone. Contact SmartDrivo Admin to approve this device."
+                "Access is restricted. Please contact SmartDrivo Support."
         }
 
     Box(
@@ -152,60 +141,6 @@ fun SecurityLockScreen(
                     lineHeight = 20.sp,
                     textAlign = TextAlign.Center
                 )
-
-                if (
-                    !accountBlocked &&
-                    !deviceBlacklisted &&
-                    !adminLocked &&
-                    !sessionInvalidated &&
-                    !offlineVerificationExpired &&
-                    profile.boundDeviceName.isNotBlank()
-                ) {
-                    Spacer(
-                        modifier = Modifier.height(14.dp)
-                    )
-
-                    Text(
-                        text = "Registered device: ${profile.boundDeviceName}",
-                        color = TextDarkSecondary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                if (
-                    !accountBlocked &&
-                    !deviceBlacklisted &&
-                    !adminLocked &&
-                    !sessionInvalidated &&
-                    !offlineVerificationExpired
-                ) {
-                    Spacer(
-                        modifier = Modifier.height(18.dp)
-                    )
-
-                    if (profile.deviceChangeRequested) {
-                        Text(
-                            text = "Device change request sent. Waiting for admin approval.",
-                            color = Color(0xFF059669),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-                    } else {
-                        Button(
-                            onClick = onRequestDeviceChange,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Text(
-                                text = "Request Device Change",
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
 
                 Spacer(
                     modifier = Modifier.height(18.dp)

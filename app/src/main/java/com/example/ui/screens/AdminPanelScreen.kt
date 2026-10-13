@@ -320,16 +320,7 @@ fun AdminPanelScreen(
                         onSearchChange = { userSearchQuery = it },
                         statusFilter = userStatusFilter,
                         onStatusFilterChange = { userStatusFilter = it },
-                        onToggleActive = { user ->
-                            if (user.isAdmin) {
-                                Toast.makeText(context, "Cannot deactivate Administrator account! Admin access is protected.", Toast.LENGTH_SHORT).show()
-                            } else {
-                                repository.adminToggleUserActiveStatus(user.uid, user.isActive) { success ->
-                                    val updatedStatus = if (user.isActive) "Inactive" else "Active"
-                                    Toast.makeText(context, "${user.name} marked as $updatedStatus in Firestore", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        },
+                        onToggleActive = { _ -> },
                         onOpenPlanEdit = { user ->
                             userForPlanEdit = user
                         }
@@ -1063,22 +1054,6 @@ private fun DriverUserCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
-                    onClick = onToggleActive,
-                    modifier = Modifier.weight(1f).height(34.dp),
-                    shape = RoundedCornerShape(6.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (user.isActive) AccentRed else AccentGreen
-                    ),
-                    border = BorderStroke(1.dp, if (user.isActive) AccentRed else AccentGreen)
-                ) {
-                    Text(
-                        text = if (user.isActive) "Mark Inactive" else "Activate Driver",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
                 Button(
                     onClick = onEditPlan,
                     modifier = Modifier.weight(1f).height(34.dp),

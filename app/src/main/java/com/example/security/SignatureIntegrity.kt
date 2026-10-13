@@ -10,14 +10,11 @@ import java.security.MessageDigest
 object SignatureIntegrity {
 
     // APK_SIGNATURE_TAMPER_LOCK_V2
-    // GitHub Actions release APKs are signed with the release/upload
+    // Direct GitHub Actions release APKs are signed with the release/upload
     // certificate. Android Studio debug runs use the local debug certificate.
     // Release builds NEVER trust the debug certificate.
-    private const val RELEASE_CERT_SHA256 =
-        "0B8E390741179EA1B1F0A319FFE48247E2265342225E52AF93722656907C0959"
-
-    private const val DEBUG_CERT_SHA256 =
-        "0E24BE6A535CEDA44A30B86065041BA457DD9C4FBC242F2DFA80368D1DAF2504"
+    private const val RELEASE_CERT_SHA256 = "0B8E390741179EA1B1F0A319FFE48247E2265342225E52AF93722656907C0959"
+    private const val DEBUG_CERT_SHA256 = "0E24BE6A535CEDA44A30B86065041BA457DD9C4FBC242F2DFA80368D1DAF2504"
 
     private fun expectedCertSha256(): Set<String> =
         if (BuildConfig.DEBUG) {

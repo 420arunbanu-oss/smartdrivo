@@ -434,8 +434,8 @@ class ExampleUnitTest {
         assertTrue(decision is DecisionResult.Reject)
         val reject = decision as DecisionResult.Reject
         assertTrue(
-            "Current compact reject reason should identify the failed Home Both filter: ${reject.reason}",
-            reject.reason.contains("Home Both failed", ignoreCase = true)
+            "Current compact reject reason should identify the failed Order Filter 1: ${reject.reason}",
+            reject.reason.contains("Order Filter 1 failed", ignoreCase = true)
         )
 
         // Also test with FilterMode.DISTANCE_ONLY to ensure drop distance is not bypassed

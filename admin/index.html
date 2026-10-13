@@ -41,8 +41,7 @@
       min-height: 100vh;
     }
     .container {
-      width: min(1500px, calc(100vw - 32px));
-      max-width: 1500px;
+      max-width: 1140px;
       margin: 0 auto;
     }
     header {
@@ -280,64 +279,6 @@
     tr:hover td {
       background: rgba(255, 255, 255, 0.02);
     }
-
-    /* ADMIN_DRIVER_TABLE_FIT_V1
-       Keep all Registered Drivers columns + Device Lock actions visible
-       on normal desktop screens, with horizontal scroll only as fallback. */
-    #drivers {
-      padding-left: 16px;
-      padding-right: 16px;
-    }
-    #drivers table {
-      width: 100%;
-      table-layout: auto;
-    }
-    #drivers th,
-    #drivers td {
-      padding: 10px 7px;
-      font-size: 12px;
-      vertical-align: top;
-      line-height: 1.25;
-    }
-    #drivers th {
-      font-size: 10px;
-      letter-spacing: 0.25px;
-      white-space: nowrap;
-    }
-    #drivers td:nth-child(1) { width: 10%; }
-    #drivers td:nth-child(2) { width: 17%; }
-    #drivers td:nth-child(3) { width: 8%; }
-    #drivers td:nth-child(4) { width: 8%; }
-    #drivers td:nth-child(5) { width: 7%; }
-    #drivers td:nth-child(6) { width: 15%; }
-    #drivers td:nth-child(7) { width: 11%; }
-    #drivers td:nth-child(8) { width: 9%; }
-    #drivers td:nth-child(9) { width: 8%; }
-    #drivers td:nth-child(10) { width: 120px; }
-
-    #drivers td:last-child .btn-sm {
-      width: 100%;
-      justify-content: center;
-      white-space: nowrap;
-      padding: 5px 7px;
-      font-size: 10px;
-    }
-
-    @media (max-width: 1100px) {
-      body {
-        padding: 12px;
-      }
-      .container {
-        width: calc(100vw - 24px);
-      }
-      #drivers {
-        padding-left: 10px;
-        padding-right: 10px;
-      }
-      #drivers table {
-        min-width: 1080px;
-      }
-    }
     #toastNotification {
       position: fixed;
       bottom: 24px;
@@ -469,13 +410,12 @@
               <th>Registered Device</th>
               <th>Active Plan</th>
               <th>Expiry</th>
-              <th>Status</th>
-              <th>Action</th>
+
             </tr>
           </thead>
           <tbody id="driversTableBody">
             <tr id="driversLoadingRow">
-              <td colspan="10" style="text-align: center; padding: 36px; color: var(--text-dim);">
+              <td colspan="8" style="text-align: center; padding: 36px; color: var(--text-dim);">
                 <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 24px; color: var(--accent); margin-bottom: 10px; display: block;"></i>
                 Streaming live drivers from Firestore /users...
               </td>
@@ -655,7 +595,7 @@
 
     // SECURITY_STATUS_ADMIN_V1
     // Live permanent device-block metadata, keyed by privacy-safe device hash.
-    let liveBlockedDevices = new Map();
+
 
     let activePaymentFilter = 'PENDING'; // 'PENDING' or 'ALL'
 
@@ -748,105 +688,6 @@
       if (age < 7 * day) return `${Math.floor(age / day)} day ago`;
 
       return formatTime(value);
-    }
-
-    function applyBlockedDeviceSecurityState(driver) {
-      const key =
-        driver.securityDeviceKey ||
-        driver.trialDeviceKey ||
-        '';
-
-      const blocked =
-        key
-          ? liveBlockedDevices.get(key)
-          : null;
-
-      return {
-        ...driver,
-        deviceBlacklisted: !!blocked,
-        deviceBlacklistReason:
-          blocked && blocked.reason
-            ? blocked.reason
-            : ''
-      };
-    }
-
-    function getDriverSecurityStatus(driver) {
-      if (driver.isAdmin) {
-        return {
-          label: 'Protected Admin',
-          icon: 'fa-shield-halved',
-          color: '#60A5FA',
-          background: 'rgba(37,99,235,.18)',
-          reason: 'Administrator security bypass'
-        };
-      }
-
-      if (driver.isBlocked) {
-        return {
-          label: 'Account Blocked',
-          icon: 'fa-user-slash',
-          color: '#FCA5A5',
-          background: 'rgba(220,38,38,.18)',
-          reason:
-            driver.blockReason ||
-            'Blocked by SmartDrivo Admin'
-        };
-      }
-
-      if (driver.deviceBlacklisted) {
-        return {
-          label: 'Device Blocked',
-          icon: 'fa-ban',
-          color: '#FCA5A5',
-          background: 'rgba(220,38,38,.18)',
-          reason:
-            driver.deviceBlacklistReason ||
-            'Device blacklisted by SmartDrivo Admin'
-        };
-      }
-
-      if (!driver.isActive) {
-        return {
-          label: 'App Locked',
-          icon: 'fa-lock',
-          color: '#FBBF24',
-          background: 'rgba(245,158,11,.16)',
-          reason: 'Remote app lock is active'
-        };
-      }
-
-      if (driver.deviceChangeRequested) {
-        return {
-          label: 'Device Change Pending',
-          icon: 'fa-mobile-screen-button',
-          color: '#60A5FA',
-          background: 'rgba(37,99,235,.16)',
-          reason:
-            `Waiting for approval: ${
-              driver.requestedDeviceName ||
-              'new phone'
-            }`
-        };
-      }
-
-      if (driver.activeSessionId) {
-        return {
-          label: 'Secure Session Active',
-          icon: 'fa-circle-check',
-          color: '#34D399',
-          background: 'rgba(16,185,129,.15)',
-          reason: 'Account and session currently allowed'
-        };
-      }
-
-      return {
-        label: 'Active',
-        icon: 'fa-circle-check',
-        color: '#34D399',
-        background: 'rgba(16,185,129,.15)',
-        reason: 'No security lock reported'
-      };
     }
 
     function formatExpiry(expiryMillis, isAdmin) {
@@ -1137,9 +978,7 @@
           });
         });
 
-        liveDrivers =
-          collapseDuplicateDrivers(rawDrivers)
-            .map(applyBlockedDeviceSecurityState);
+        liveDrivers = collapseDuplicateDrivers(rawDrivers);
 
         const hiddenDuplicateCount =
           Math.max(0, rawDrivers.length - liveDrivers.length);
@@ -1172,47 +1011,6 @@
         console.error("Firestore users listener error:", error);
         logMessage(`Firestore /users listener error: ${error.message}`);
         showToast("Error streaming drivers: " + error.message, "error");
-      });
-
-      // SECURITY_STATUS_ADMIN_V1
-      // Live permanent device blacklist status/reason for Security Status.
-      db.collection('blockedDevices').onSnapshot((snapshot) => {
-        const next = new Map();
-
-        snapshot.forEach((doc) => {
-          const d = doc.data() || {};
-
-          if (d.active !== false) {
-            next.set(
-              doc.id,
-              {
-                reason:
-                  d.reason ||
-                  'Device blacklisted by SmartDrivo Admin',
-                blockedAt:
-                  Number(d.blockedAt) || 0
-              }
-            );
-          }
-        });
-
-        liveBlockedDevices = next;
-
-        liveDrivers =
-          liveDrivers.map(
-            applyBlockedDeviceSecurityState
-          );
-
-        renderDriversTable();
-
-        logMessage(
-          `Security Status: ${next.size} active device blacklist record(s) loaded.`
-        );
-      }, (error) => {
-        console.warn(
-          "Blocked devices listener notice:",
-          error.message
-        );
       });
 
       // B. Listen to /payments collection
@@ -1316,266 +1114,67 @@
       const tbody = document.getElementById('driversTableBody');
       if (!tbody) return;
 
-      const searchInput = document.getElementById('driverSearchInput');
-      const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+      const search = document.getElementById('driverSearchInput');
+      const query = search ? search.value.toLowerCase().trim() : '';
 
-      const filtered = liveDrivers.filter(d => {
+      const filtered = liveDrivers.filter(driver => {
         if (!query) return true;
-        const name = (d.name || '').toLowerCase();
-        const phone = (d.phone || '').toLowerCase();
-        const email = (d.email || '').toLowerCase();
-        const city = (d.city || '').toLowerCase();
-        const state = (d.state || '').toLowerCase();
-        const vehicle = (d.vehicleType || '').toLowerCase();
-        const device = (
-          d.activeSessionDevice ||
-          d.registeredDevice ||
-          d.lastDevice ||
-          ''
-        ).toLowerCase();
-        const appVersion = (
-          d.activeSessionAppVersion ||
-          d.registeredAppVersion ||
-          ''
-        ).toLowerCase();
-        const blockReason = (
-          d.blockReason ||
-          d.deviceBlacklistReason ||
-          ''
-        ).toLowerCase();
-
-        return (
-          name.includes(query) ||
-          phone.includes(query) ||
-          email.includes(query) ||
-          city.includes(query) ||
-          state.includes(query) ||
-          vehicle.includes(query) ||
-          device.includes(query) ||
-          appVersion.includes(query) ||
-          blockReason.includes(query)
+        const fields = [
+          driver.name,
+          driver.phone,
+          driver.email,
+          driver.city,
+          driver.state,
+          driver.vehicleType,
+          driver.registeredDevice,
+          driver.registeredAppVersion
+        ];
+        return fields.some(value =>
+          String(value || '').toLowerCase().includes(query)
         );
       });
 
       if (filtered.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="10" style="text-align: center; padding: 32px; color: var(--text-dim);">
-              <i class="fa-solid fa-user-slash" style="font-size: 24px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
-              ${query ? 'No registered drivers matching your search criteria.' : 'No registered drivers found in Firestore /users collection.'}
+            <td colspan="8" style="text-align:center; padding:32px;">
+              No registered drivers matching your search.
             </td>
           </tr>
         `;
         return;
       }
 
-      let html = '';
-      filtered.forEach(driver => {
-        const isCurrentAdmin = (
-          driver.isAdmin === true ||
-          driver.uid === currentAdminUid ||
-          (Array.isArray(driver.sourceUids) && driver.sourceUids.includes(currentAdminUid))
-        );
-
-        // Vehicle badge style
-        let vehicleBg = '#172554';
-        let vehicleColor = '#60A5FA';
-        if (driver.vehicleType === 'AUTO') {
-          vehicleBg = '#2C2215';
-          vehicleColor = '#F59E0B';
-        } else if (driver.vehicleType === 'BIKE') {
-          vehicleBg = '#064E3B';
-          vehicleColor = '#34D399';
-        }
-
-        // DEVICE_LOCK_ADMIN_V1
-        let actionCell = '';
-        if (isCurrentAdmin) {
-          actionCell = `
-            <span class="badge" style="background: rgba(37,99,235,0.15); color: #60A5FA; border: 1px solid rgba(37,99,235,0.3);">
-              <i class="fa-solid fa-shield-halved"></i> Protected
-            </span>
-          `;
-        } else {
-          const lockButton =
-            driver.isActive
-              ? `
-                <button type="button" class="btn btn-danger btn-sm" onclick="toggleDriverActive('${driver.uid}', true, '${escapeHtml(driver.name)}')" title="Remote lock SmartDrivo">
-                  <i class="fa-solid fa-lock"></i> Lock App
-                </button>
-              `
-              : `
-                <button type="button" class="btn btn-success btn-sm" onclick="toggleDriverActive('${driver.uid}', false, '${escapeHtml(driver.name)}')" title="Remote unlock SmartDrivo">
-                  <i class="fa-solid fa-lock-open"></i> Unlock App
-                </button>
-              `;
-
-          const deviceButton =
-            driver.deviceChangeRequested && driver.requestedDeviceId
-              ? `
-                <button type="button" class="btn btn-success btn-sm" onclick="approveDeviceChange('${driver.uid}', '${escapeHtml(driver.name)}')" title="Approve requested new phone">
-                  <i class="fa-solid fa-mobile-screen-button"></i> Approve Device
-                </button>
-              `
-              : `
-                <button type="button" class="btn btn-sm" onclick="resetDeviceBinding('${driver.uid}', '${escapeHtml(driver.name)}')" title="Fallback: clear current device binding">
-                  <i class="fa-solid fa-rotate"></i> Reset Device
-                </button>
-              `;
-
-                    // BLOCKED_USER_DEVICE_BLACKLIST_V1
-          const blockUserButton =
-            driver.isBlocked
-              ? `
-                <button type="button" class="btn btn-success btn-sm" onclick="togglePermanentUserBlock('${driver.uid}', true, '${escapeHtml(driver.name)}')" title="Remove permanent account block">
-                  <i class="fa-solid fa-user-check"></i> Unblock User
-                </button>
-              `
-              : `
-                <button type="button" class="btn btn-danger btn-sm" onclick="togglePermanentUserBlock('${driver.uid}', false, '${escapeHtml(driver.name)}')" title="Permanently block this account">
-                  <i class="fa-solid fa-user-slash"></i> Block User
-                </button>
-              `;
-
-          const blockDeviceButton =
-            driver.securityDeviceKey
-              ? `
-                <button type="button" class="btn btn-sm" onclick="toggleDeviceBlacklist('${driver.uid}', '${escapeHtml(driver.name)}')" title="Add/remove this phone from permanent device blacklist">
-                  <i class="fa-solid fa-ban"></i> Device Blacklist
-                </button>
-              `
-              : `
-                <button type="button" class="btn btn-sm" disabled style="opacity:.55;" title="User must open the updated app once to register the privacy-safe device key">
-                  <i class="fa-solid fa-ban"></i> Device Key Pending
-                </button>
-              `;
-
-actionCell = `
-            <div style="display:flex; flex-direction:column; gap:5px; min-width:108px;">
-              ${lockButton}
-              ${deviceButton}
-              ${blockUserButton}
-              ${blockDeviceButton}
+      tbody.innerHTML = filtered.map(driver => `
+        <tr>
+          <td>
+            <strong>${escapeHtml(driver.name)}</strong>
+            ${driver.isAdmin ? '<span class="badge">ADMIN</span>' : ''}
+          </td>
+          <td>
+            <strong>${escapeHtml(driver.phone || 'No Phone')}</strong>
+            <div style="font-size:11px; color:var(--text-dim);">
+              ${escapeHtml(driver.email || '')}
             </div>
-          `;
-        }
-
-        // SECURITY_STATUS_ADMIN_V1
-        const securityStatus =
-          getDriverSecurityStatus(driver);
-
-        const activeDevice =
-          driver.activeSessionDevice ||
-          driver.registeredDevice ||
-          driver.lastDevice ||
-          'Not captured';
-
-        const activeAppVersion =
-          driver.activeSessionAppVersion ||
-          driver.registeredAppVersion ||
-          'Unknown';
-
-        html += `
-          <tr>
-            <td>
-              <strong>${escapeHtml(driver.name)}</strong>
-              ${driver.isAdmin ? '<span class="badge" style="background: rgba(37,99,235,0.2); color: #60A5FA; font-size: 10px; margin-left: 6px;">ADMIN</span>' : ''}
-            </td>
-            <td>
-              <div><strong>${escapeHtml(driver.phone || 'No Phone')}</strong></div>
-              <div style="font-size: 11px; color: var(--text-dim);">${escapeHtml(driver.email || '')}</div>
-            </td>
-            <td><span style="color: #F8FAFC; font-weight: 600;">${escapeHtml(driver.city)}</span></td>
-            <td><span style="color: #94A3B8;">${escapeHtml(driver.state)}</span></td>
-            <td><span class="badge" style="background: ${vehicleBg}; color: ${vehicleColor};">${escapeHtml(driver.vehicleType)}</span></td>
-            <td>
-              <div style="font-weight:600; color:#F8FAFC;">
-                ${escapeHtml(driver.registeredDevice || driver.lastDevice || 'Not captured')}
-              </div>
-              <div style="font-size:10px; color:var(--text-dim);">
-                ${escapeHtml(
-                  [
-                    driver.registeredAndroidVersion,
-                    driver.registeredAppVersion ? `App ${driver.registeredAppVersion}` : ''
-                  ].filter(Boolean).join(' | ')
-                )}
-              </div>
-
-              <div style="font-size:10px; margin-top:5px; color:${driver.boundInstallId ? '#34D399' : '#F59E0B'};">
-                ${driver.boundInstallId
-                  ? `Device Lock: ${escapeHtml(driver.boundDevice || 'Bound')}`
-                  : 'Device Lock: Waiting to bind'
-                }
-              </div>
-
-              ${driver.deviceChangeRequested
-                ? `<div style="font-size:10px; color:#60A5FA; margin-top:3px;">
-                     Change request: ${escapeHtml(driver.requestedDeviceName || 'New phone')}
-                   </div>`
-                : ''
-              }
-
-              <!-- SECURITY_STATUS_ADMIN_V1 -->
-              <div style="margin-top:8px; padding-top:7px; border-top:1px solid rgba(148,163,184,.16);">
-                <div style="font-size:10px; color:#CBD5E1;">
-                  <strong>Active Device:</strong>
-                  ${escapeHtml(activeDevice)}
-                </div>
-                <div style="font-size:10px; color:#CBD5E1; margin-top:2px;">
-                  <strong>App:</strong>
-                  ${escapeHtml(activeAppVersion)}
-                </div>
-                <div
-                  style="font-size:10px; color:#94A3B8; margin-top:2px;"
-                  title="${escapeHtml(formatTime(driver.lastSeenAt))}"
-                >
-                  <strong>Last Seen:</strong>
-                  ${escapeHtml(formatRelativeLastSeen(driver.lastSeenAt))}
-                </div>
-                <div style="font-size:10px; color:#94A3B8; margin-top:2px;">
-                  <strong>Session:</strong>
-                  ${
-                    driver.activeSessionId
-                      ? `Active since ${escapeHtml(formatTime(driver.activeSessionStartedAt))}`
-                      : 'Not claimed yet'
-                  }
-                </div>
-              </div>
-            </td>
-            <td><strong>${escapeHtml(driver.plan === 'FREE_TRIAL' ? '1-Day Free Trial' : driver.plan)}</strong> <span style="font-size: 11px; color: var(--text-dim);">${driver.planPrice ? `(₹${driver.planPrice})` : ''}</span></td>
-            <td>${formatExpiry(driver.planExpireMillis, driver.isAdmin)}</td>
-            <td>
-              <!-- SECURITY_STATUS_ADMIN_V1 -->
-              <span
-                class="badge"
-                style="
-                  background:${securityStatus.background};
-                  color:${securityStatus.color};
-                  border:1px solid ${securityStatus.color}33;
-                "
-              >
-                <i class="fa-solid ${securityStatus.icon}"></i>
-                ${escapeHtml(securityStatus.label)}
-              </span>
-
-              <div style="font-size:10px; color:#CBD5E1; margin-top:6px; max-width:190px; line-height:1.35;">
-                <strong>Reason:</strong>
-                ${escapeHtml(securityStatus.reason)}
-              </div>
-
-              ${driver.deviceChangeRequested
-                ? '<div style="margin-top:5px;"><span class="badge" style="background:rgba(37,99,235,.18);color:#60A5FA;">Device Change Request</span></div>'
-                : ''
-              }
-            </td>
-            <td>${actionCell}</td>
-          </tr>
-        `;
-      });
-
-      tbody.innerHTML = html;
+          </td>
+          <td>${escapeHtml(driver.city)}</td>
+          <td>${escapeHtml(driver.state)}</td>
+          <td>${escapeHtml(driver.vehicleType)}</td>
+          <td>
+            <strong>${escapeHtml(driver.registeredDevice || driver.lastDevice || 'Not captured')}</strong>
+            <div style="font-size:11px; color:var(--text-dim);">
+              ${escapeHtml(driver.registeredAndroidVersion || '')}
+              ${driver.registeredAppVersion ? ' | App ' + escapeHtml(driver.registeredAppVersion) : ''}
+            </div>
+          </td>
+          <td>
+            <strong>${escapeHtml(driver.plan === 'FREE_TRIAL' ? '1-Day Free Trial' : driver.plan)}</strong>
+            ${driver.planPrice ? '(Rs. ' + Number(driver.planPrice) + ')' : ''}
+          </td>
+          <td>${formatExpiry(driver.planExpireMillis, driver.isAdmin)}</td>
+        </tr>
+      `).join('');
     }
-
     function filterDrivers() {
       const input = document.getElementById('driverSearchInput');
       const query = input ? input.value.trim() : '';
@@ -1590,394 +1189,6 @@ actionCell = `
         input.value = '';
         filterDrivers();
         input.focus();
-      }
-    }
-
-    // 4. DEVICE LOCK / REMOTE LOCK CONTROLS
-    async function toggleDriverActive(uid, currentlyActive, driverName) {
-      const target = liveDrivers.find(
-        d =>
-          d.uid === uid ||
-          (
-            Array.isArray(d.sourceUids) &&
-            d.sourceUids.includes(uid)
-          )
-      );
-
-      if (
-        target &&
-        (
-          target.isAdmin ||
-          target.uid === currentAdminUid ||
-          (
-            Array.isArray(target.sourceUids) &&
-            target.sourceUids.includes(currentAdminUid)
-          )
-        )
-      ) {
-        alert("Protection Guard: Administrator accounts cannot be locked!");
-        return;
-      }
-
-      const targetStatus = !currentlyActive;
-      const action = targetStatus ? 'unlock' : 'lock';
-
-      if (!confirm(`Are you sure you want to ${action} SmartDrivo for ${driverName || 'this driver'}?`)) return;
-
-      try {
-        const targetUids =
-          target &&
-          Array.isArray(target.sourceUids) &&
-          target.sourceUids.length > 0
-            ? [...new Set(target.sourceUids)]
-            : [uid];
-
-        const batch = db.batch();
-
-        targetUids.forEach(targetUid => {
-          batch.update(
-            db.collection('users').doc(targetUid),
-            {
-              isActive: targetStatus,
-              updatedAt: Date.now()
-            }
-          );
-        });
-
-        await batch.commit();
-
-        showToast(
-          `SmartDrivo ${targetStatus ? 'unlocked' : 'locked'} for ${driverName || 'driver'}.`,
-          'success'
-        );
-      } catch (err) {
-        console.error("Firestore lock toggle failed:", err);
-        showToast(`Error updating driver lock: ${err.message}`, 'error');
-      }
-    }
-
-    // BLOCKED_USER_DEVICE_BLACKLIST_V1
-    async function togglePermanentUserBlock(
-      uid,
-      currentlyBlocked,
-      driverName
-    ) {
-      const target = liveDrivers.find(
-        d =>
-          d.uid === uid ||
-          (
-            Array.isArray(d.sourceUids) &&
-            d.sourceUids.includes(uid)
-          )
-      );
-
-      if (
-        !target ||
-        target.isAdmin ||
-        target.uid === currentAdminUid ||
-        (
-          Array.isArray(target.sourceUids) &&
-          target.sourceUids.includes(currentAdminUid)
-        )
-      ) {
-        alert("Protection Guard: Administrator accounts cannot be blocked.");
-        return;
-      }
-
-      const shouldBlock = !currentlyBlocked;
-
-      const reason =
-        shouldBlock
-          ? (
-              prompt(
-                `Reason for permanently blocking ${driverName || 'this driver'}:`,
-                'Blocked by SmartDrivo Admin'
-              ) || ''
-            ).trim()
-          : '';
-
-      if (shouldBlock && !reason) {
-        return;
-      }
-
-      if (
-        !confirm(
-          shouldBlock
-            ? `Permanently block ${driverName || 'this driver'}?`
-            : `Remove permanent account block for ${driverName || 'this driver'}?`
-        )
-      ) {
-        return;
-      }
-
-      try {
-        const targetUids =
-          Array.isArray(target.sourceUids) &&
-          target.sourceUids.length > 0
-            ? [...new Set(target.sourceUids)]
-            : [uid];
-
-        const batch = db.batch();
-        const now = Date.now();
-
-        targetUids.forEach(targetUid => {
-          batch.update(
-            db.collection('users').doc(targetUid),
-            {
-              isBlocked: shouldBlock,
-              blockReason: reason,
-              blockedAt: shouldBlock ? now : 0,
-              updatedAt: now
-            }
-          );
-        });
-
-        await batch.commit();
-
-        showToast(
-          shouldBlock
-            ? `${driverName || 'Driver'} permanently blocked.`
-            : `${driverName || 'Driver'} account unblocked.`,
-          'success'
-        );
-      } catch (err) {
-        console.error("Permanent user block failed:", err);
-        showToast(
-          `Could not update permanent block: ${err.message}`,
-          'error'
-        );
-      }
-    }
-
-    async function toggleDeviceBlacklist(
-      uid,
-      driverName
-    ) {
-      const target = liveDrivers.find(
-        d =>
-          d.uid === uid ||
-          (
-            Array.isArray(d.sourceUids) &&
-            d.sourceUids.includes(uid)
-          )
-      );
-
-      if (
-        !target ||
-        target.isAdmin ||
-        target.uid === currentAdminUid ||
-        (
-          Array.isArray(target.sourceUids) &&
-          target.sourceUids.includes(currentAdminUid)
-        )
-      ) {
-        alert("Protection Guard: Administrator devices cannot be blacklisted.");
-        return;
-      }
-
-      const key =
-        target.securityDeviceKey ||
-        target.trialDeviceKey ||
-        '';
-
-      if (!key) {
-        showToast(
-          "Device key is not available yet. Ask the user to open the updated SmartDrivo app once.",
-          "warning"
-        );
-        return;
-      }
-
-      const ref =
-        db.collection('blockedDevices')
-          .doc(key);
-
-      try {
-        const snap =
-          await ref.get();
-
-        if (snap.exists && snap.data()?.active !== false) {
-          if (
-            !confirm(
-              `Remove ${driverName || 'this driver'} device from blacklist?`
-            )
-          ) {
-            return;
-          }
-
-          await ref.delete();
-
-          showToast(
-            `Device blacklist removed for ${driverName || 'driver'}.`,
-            'success'
-          );
-
-          return;
-        }
-
-        const reason =
-          (
-            prompt(
-              `Reason for blacklisting ${driverName || 'this driver'} device:`,
-              'Device blocked by SmartDrivo Admin'
-            ) || ''
-          ).trim();
-
-        if (!reason) {
-          return;
-        }
-
-        if (
-          !confirm(
-            `Permanently blacklist this phone for ${driverName || 'driver'}? Different SmartDrivo accounts on this phone will also be blocked.`
-          )
-        ) {
-          return;
-        }
-
-        await ref.set(
-          {
-            deviceKey: key,
-            active: true,
-            reason,
-            blockedAt: Date.now(),
-            blockedBy: currentAdminUid || '',
-            driverUid: uid,
-            driverName: driverName || ''
-          }
-        );
-
-        showToast(
-          `Device blacklisted for ${driverName || 'driver'}.`,
-          'success'
-        );
-      } catch (err) {
-        console.error("Device blacklist toggle failed:", err);
-        showToast(
-          `Could not update device blacklist: ${err.message}`,
-          'error'
-        );
-      }
-    }
-
-    async function approveDeviceChange(uid, driverName) {
-      const target = liveDrivers.find(
-        d =>
-          d.uid === uid ||
-          (
-            Array.isArray(d.sourceUids) &&
-            d.sourceUids.includes(uid)
-          )
-      );
-
-      if (!target || !target.requestedDeviceId) {
-        showToast("No pending device change request found.", "warning");
-        return;
-      }
-
-      if (target.isAdmin) {
-        alert("Administrator device binding is protected.");
-        return;
-      }
-
-      const deviceName =
-        target.requestedDeviceName || "New Android device";
-
-      if (!confirm(`Approve ${deviceName} for ${driverName || 'this driver'}? The previous phone will be locked out.`)) {
-        return;
-      }
-
-      try {
-        const targetUids =
-          Array.isArray(target.sourceUids) &&
-          target.sourceUids.length > 0
-            ? [...new Set(target.sourceUids)]
-            : [uid];
-
-        const batch = db.batch();
-
-        targetUids.forEach(targetUid => {
-          batch.update(
-            db.collection('users').doc(targetUid),
-            {
-              boundInstallId: target.requestedDeviceId,
-              boundDevice: deviceName,
-              deviceBoundAt: Date.now(),
-              deviceChangeRequested: false,
-              requestedDeviceId: "",
-              requestedDeviceName: "",
-              requestedDeviceAt: 0,
-              updatedAt: Date.now()
-            }
-          );
-        });
-
-        await batch.commit();
-
-        showToast(
-          `New device approved for ${driverName || 'driver'}.`,
-          'success'
-        );
-      } catch (err) {
-        console.error("Approve device failed:", err);
-        showToast(`Could not approve device: ${err.message}`, 'error');
-      }
-    }
-
-    async function resetDeviceBinding(uid, driverName) {
-      const target = liveDrivers.find(
-        d =>
-          d.uid === uid ||
-          (
-            Array.isArray(d.sourceUids) &&
-            d.sourceUids.includes(uid)
-          )
-      );
-
-      if (target && target.isAdmin) {
-        alert("Administrator device binding is protected.");
-        return;
-      }
-
-      if (!confirm(`Reset device lock for ${driverName || 'this driver'}? Use this only when the driver cannot send a device-change request.`)) {
-        return;
-      }
-
-      try {
-        const targetUids =
-          target &&
-          Array.isArray(target.sourceUids) &&
-          target.sourceUids.length > 0
-            ? [...new Set(target.sourceUids)]
-            : [uid];
-
-        const batch = db.batch();
-
-        targetUids.forEach(targetUid => {
-          batch.update(
-            db.collection('users').doc(targetUid),
-            {
-              boundInstallId: "",
-              boundDevice: "",
-              deviceBoundAt: 0,
-              deviceChangeRequested: false,
-              requestedDeviceId: "",
-              requestedDeviceName: "",
-              requestedDeviceAt: 0,
-              updatedAt: Date.now()
-            }
-          );
-        });
-
-        await batch.commit();
-
-        showToast(
-          `Device binding reset for ${driverName || 'driver'}.`,
-          'success'
-        );
-      } catch (err) {
-        console.error("Reset device failed:", err);
-        showToast(`Could not reset device: ${err.message}`, 'error');
       }
     }
 

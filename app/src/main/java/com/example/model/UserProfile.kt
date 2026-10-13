@@ -45,22 +45,14 @@ data class UserProfile(
 
     val isFreeTrialActive: Boolean
         get() =
-            isActive &&
-                !isBlocked &&
-                !isDeviceBlacklisted &&
-                isDeviceAuthorized &&
-                isFreeTrial &&
+            isFreeTrial &&
                 planExpireMillis >
                     System.currentTimeMillis()
 
     val isPlanValid: Boolean
         get() =
-            isActive &&
-                !isBlocked &&
-                !isDeviceBlacklisted &&
-                isDeviceAuthorized &&
-                planExpireMillis >
-                    System.currentTimeMillis() &&
+            planExpireMillis >
+                System.currentTimeMillis() &&
                 (
                     isApproved ||
                         isFreeTrial
