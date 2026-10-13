@@ -7919,6 +7919,152 @@ private val processingTimeoutRunnable = Runnable {
                 }
 
             if (legacyPlusMatch || additionalRule != null) {
+                // RAPIDO_PLUS_AMOUNT_AREA_PRIORITY_V3
+                // Priority: +Amount -> No-Go -> Go-To -> Accept.
+                // Regular numeric filters are OR alternatives, not mandatory
+                // for a qualifying +Amount offer.
+                // No new accessibility scan, database read or network call.
+
+                val priorityFare = candidate.fare
+                val priorityPickup = candidate.pickupDistKm
+                val priorityDrop = candidate.dropDistKm
+
+                val areaDecision: DecisionResult =
+                    when {
+                        validation.hasNearby ->
+                            DecisionResult.Ignore(
+                                "+Amount: pickup marked Nearby"
+                            )
+
+                        priorityFare == null ||
+                            !priorityFare.isFinite() ||
+                            priorityFare <= 0f ->
+                            DecisionResult.Ignore(
+                                "+Amount: valid fare unavailable"
+                            )
+
+                        priorityPickup == null ||
+                            !priorityPickup.isFinite() ||
+                            priorityPickup <= 0f ->
+                            DecisionResult.Ignore(
+                                "+Amount: valid pickup unavailable"
+                            )
+
+                        priorityDrop == null ||
+                            !priorityDrop.isFinite() ||
+                            priorityDrop <= 0f ->
+                            DecisionResult.Ignore(
+                                "+Amount: valid trip unavailable"
+                            )
+
+                        candidate.isBundledOrder &&
+                            !settings.isBundleOrderEnabled ->
+                            DecisionResult.Ignore(
+                                "Bundle Order OFF"
+                            )
+
+                        else -> {
+                            val goToGroups = prefs.goToAreas.value
+                            val noGoGroups = prefs.noGoAreas.value
+
+                            val destinationKnown =
+                                !candidate.dropAddress.isNullOrBlank() ||
+                                    !candidate.dropArea.isNullOrBlank()
+
+                            val noGoRestrictionsActive =
+                                settings.isNoGoEnabled &&
+                                    noGoGroups.any { group ->
+                                        group.isEnabled &&
+                                            group.keywords.any { word ->
+                                                word.isNotBlank() &&
+                                                    !word.equals(
+                                                        group.name,
+                                                        ignoreCase = true
+                                                    )
+                                            }
+                                    }
+
+                            val goToRestrictionsActive =
+                                settings.isGoToEnabled &&
+                                    goToGroups.any { it.isEnabled }
+
+                            when {
+                                noGoRestrictionsActive && !destinationKnown ->
+                                    DecisionResult.Ignore(
+                                        "No-Go Area: destination unavailable"
+                                    )
+
+                                settings.isGoToEnabled &&
+                                    !goToRestrictionsActive ->
+                                    DecisionResult.Ignore(
+                                        "Go-To Area ON: no enabled areas saved"
+                                    )
+
+                                goToRestrictionsActive && !destinationKnown ->
+                                    DecisionResult.Ignore(
+                                        "Go-To Area: destination unavailable"
+                                    )
+
+                                else -> {
+                                    // Preserve existing exact-word No-Go and
+                                    // per-area Go-To limit matching.
+                                    // Make only the regular numeric fallback
+                                    // automatically pass AFTER area checks.
+                                    val areaOnlySettings = settings.copy(
+                                        isPrimaryFilterEnabled = true,
+                                        filterMode =
+                                            com.example.model.FilterMode.FARE_ONLY,
+                                        minFare = 0f,
+                                        maxFare = 0f,
+                                        isSecondaryBothFilterEnabled = false,
+                                        isTertiaryBothFilterEnabled = false,
+                                        extraFareRules = emptyList(),
+                                        isFastestModeEnabled = false
+                                    )
+
+                                    AreaRulesEngine.evaluateRide(
+                                        candidate = candidate,
+                                        areas = goToGroups + noGoGroups,
+                                        settings = areaOnlySettings,
+                                        goToAreas = goToGroups,
+                                        noGoAreas = noGoGroups,
+                                        pickupLocationTextOverride = "",
+                                        isGoToEnabled = settings.isGoToEnabled,
+                                        isNoGoEnabled = settings.isNoGoEnabled
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                if (areaDecision !is DecisionResult.Accept) {
+                    val blockReason =
+                        when (areaDecision) {
+                            is DecisionResult.Reject ->
+                                areaDecision.reason
+
+                            is DecisionResult.Ignore ->
+                                areaDecision.reason
+
+                            else ->
+                                "+Amount area conditions not matched"
+                        }
+
+                    Log.i(
+                        TAG,
+                        "RAPIDO +AMOUNT PRIORITY BLOCKED: $blockReason"
+                    )
+
+                    handleRapidoFilterFailure(
+                        root = root,
+                        candidate = candidate,
+                        recordId = recordId,
+                        reason = blockReason,
+                        defaultStatus = OrderStatus.IGNORED
+                    )
+                    return
+                }
+
                 val selectedMinimum = additionalRule?.minimum ?: settings.plusAmountMin
                 val selectedPickup = additionalRule?.maxPickupKm ?: settings.plusAmountMaxPickupDistanceKm
                 val selectedDrop = additionalRule?.maxDropKm ?: settings.plusAmountMaxDropDistanceKm
@@ -7928,7 +8074,7 @@ private val processingTimeoutRunnable = Runnable {
                     append("\n+₹${plusAmount?.toInt()} >= +₹${selectedMinimum.toInt()}")
                     append(" | Pickup ${String.format(Locale.ENGLISH, "%.1f", plusPickup)} km <= ${String.format(Locale.ENGLISH, "%.1f", selectedPickup)} km")
                     append(" | Trip ${String.format(Locale.ENGLISH, "%.1f", plusDrop)} km <= ${String.format(Locale.ENGLISH, "%.1f", selectedDrop)} km")
-                    append("\nOther regular fare filters bypassed")
+                    append("\nPriority: +Amount and enabled Area rules passed")
                 }
                 Log.i(TAG, "RAPIDO + AMOUNT MATCHED: $label amount=$plusAmount pickup=$plusPickup drop=$plusDrop")
                 executeRapidoAutoAccept(
