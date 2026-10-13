@@ -88,6 +88,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -428,7 +429,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {},
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        containerColor = LightBackground
+        containerColor = Color(0xFFDCE4F2)
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -441,17 +442,19 @@ val goToAreas by prefs.goToAreas.collectAsState()
         ) {
             item { Spacer(modifier = Modifier.height(10.dp)) }
 
+            // SMARTDRIVO_HOME_COMPACT_GLOBAL_V5
+            // SMARTDRIVO_HOME_THEME_V6_FIXED
             // HOME_MEMBERSHIP_PROFILE_CARD_V1
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFF4FAFF)
+                        containerColor = Color(0xFF1C2B4B)
                     ),
                     shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(
                         1.dp,
-                        Color(0xFFB9DDF7)
+                        Color(0xFF455A85)
                     )
                 ) {
                     Column(
@@ -459,14 +462,14 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             .fillMaxWidth()
                             .padding(
                                 horizontal = 12.dp,
-                                vertical = 12.dp
+                                vertical = 8.dp
                             )
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            SmartDrivoLogo(size = 46.dp)
+                            SmartDrivoLogo(size = 38.dp)
 
                             Spacer(modifier = Modifier.width(10.dp))
 
@@ -475,8 +478,8 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             ) {
                                 Text(
                                     text = "SmartDrivo",
-                                    color = TextDarkPrimary,
-                                    fontSize = 23.sp,
+                                    color = Color.White,
+                                    fontSize = 21.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1
                                 )
@@ -485,10 +488,10 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     text = membershipTitle,
                                     color =
                                         if (membershipIsActive)
-                                            StatusActiveGreen
+                                            Color(0xFF40DBAD)
                                         else
-                                            StatusInactiveRed,
-                                    fontSize = 15.sp,
+                                            Color(0xFFFFA6B5),
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1
                                 )
@@ -497,41 +500,41 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             Surface(
                                 onClick = onNavigateToCommunity,
                                 shape = RoundedCornerShape(14.dp),
-                                color = Color.White,
+                                color = Color(0xFF304365),
                                 border = BorderStroke(
                                     1.dp,
-                                    Color(0xFFE3EDF6)
+                                    Color(0xFF455A85)
                                 )
                             ) {
                                 Box(
-                                    modifier = Modifier.size(42.dp),
+                                    modifier = Modifier.size(36.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.People,
                                         contentDescription = "Community",
-                                        tint = TextDarkSecondary,
+                                        tint = Color(0xFFBCCBE8),
                                         modifier = Modifier.size(22.dp)
                                     )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
-                            color = Color.White.copy(alpha = 0.92f),
+                            color = Color(0xFF293B5B),
                             border = BorderStroke(
                                 1.dp,
-                                Color(0xFFE2EDF6)
+                                Color(0xFF455A85)
                             )
                         ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(10.dp)
+                                    .padding(8.dp)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -542,7 +545,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     ) {
                                         Text(
                                             text = "Mobile Number",
-                                            color = TextDarkSecondary,
+                                            color = Color(0xFFBCCBE8),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
                                         )
@@ -551,7 +554,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
 
                                         Text(
                                             text = userProfile.phone.ifBlank { "Not added" },
-                                            color = TextDarkPrimary,
+                                            color = Color.White,
                                             fontSize = 13.sp,
                                             lineHeight = 15.sp,
                                             fontWeight = FontWeight.Bold,
@@ -565,7 +568,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     ) {
                                         Text(
                                             text = "Email ID",
-                                            color = TextDarkSecondary,
+                                            color = Color(0xFFBCCBE8),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
                                         )
@@ -574,7 +577,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
 
                                         Text(
                                             text = userProfile.email.ifBlank { "Not added" },
-                                            color = TextDarkPrimary,
+                                            color = Color.White,
                                             fontSize = 12.5.sp,
                                             lineHeight = 15.sp,
                                             fontWeight = FontWeight.Bold,
@@ -585,8 +588,8 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                 }
 
                                 HorizontalDivider(
-                                    modifier = Modifier.padding(vertical = 10.dp),
-                                    color = Color(0xFFE1EBF3)
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    color = Color(0xFF455A85)
                                 )
 
                                 Row(
@@ -598,7 +601,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     ) {
                                         Text(
                                             text = "Plan",
-                                            color = TextDarkSecondary,
+                                            color = Color(0xFFBCCBE8),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
                                         )
@@ -607,7 +610,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
 
                                         Text(
                                             text = membershipPlanText,
-                                            color = TextDarkPrimary,
+                                            color = Color.White,
                                             fontSize = 13.sp,
                                             lineHeight = 15.sp,
                                             fontWeight = FontWeight.Bold,
@@ -621,7 +624,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     ) {
                                         Text(
                                             text = "Plan Status",
-                                            color = TextDarkSecondary,
+                                            color = Color(0xFFBCCBE8),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
                                         )
@@ -636,9 +639,9 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                                     "Inactive",
                                             color =
                                                 if (membershipIsActive)
-                                                    StatusActiveGreen
+                                                    Color(0xFF40DBAD)
                                                 else
-                                                    StatusInactiveRed,
+                                                    Color(0xFFFFA6B5),
                                             fontSize = 13.sp,
                                             lineHeight = 15.sp,
                                             fontWeight = FontWeight.Bold,
@@ -651,7 +654,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     ) {
                                         Text(
                                             text = "Days Left",
-                                            color = TextDarkSecondary,
+                                            color = Color(0xFFBCCBE8),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
                                         )
@@ -662,9 +665,9 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             text = membershipDaysText,
                                             color =
                                                 if (membershipIsActive)
-                                                    Color(0xFFF97316)
+                                                    Color(0xFFFFC078)
                                                 else
-                                                    StatusInactiveRed,
+                                                    Color(0xFFFFA6B5),
                                             fontSize = 12.sp,
                                             lineHeight = 14.sp,
                                             fontWeight = FontWeight.Bold,
@@ -682,9 +685,9 @@ val goToAreas by prefs.goToAreas.collectAsState()
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, CardBorderDefault)
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1C2B4B)),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Color(0xFF455A85))
                 ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
@@ -693,7 +696,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             text = "Today's Performance",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TextDarkPrimary
+                            color = Color.White
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -710,12 +713,12 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     text = todayOrders.size.toString(),
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = BluePrimary
+                                    color = Color(0xFFB5ABFF)
                                 )
                                 Text(
                                     text = "Total Orders",
                                     fontSize = 11.sp,
-                                    color = TextDarkSecondary,
+                                    color = Color(0xFFBCCBE8),
                                     maxLines = 1
                                 )
                             }
@@ -723,7 +726,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             VerticalDivider(
                                 modifier = Modifier.height(38.dp),
                                 thickness = 1.dp,
-                                color = CardBorderDefault
+                                color = Color(0xFF455A85)
                             )
 
                             Column(
@@ -734,12 +737,12 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     text = acceptedCount.toString(),
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = StatusActiveGreen
+                                    color = Color(0xFF40DBAD)
                                 )
                                 Text(
                                     text = "Accepted",
                                     fontSize = 11.sp,
-                                    color = TextDarkSecondary,
+                                    color = Color(0xFFBCCBE8),
                                     maxLines = 1
                                 )
                             }
@@ -747,7 +750,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             VerticalDivider(
                                 modifier = Modifier.height(38.dp),
                                 thickness = 1.dp,
-                                color = CardBorderDefault
+                                color = Color(0xFF455A85)
                             )
 
                             Column(
@@ -758,16 +761,307 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                     text = "₹$earningsAssisted",
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = BlueSecondary
+                                    color = Color(0xFFCDC6FF)
                                 )
                                 Text(
                                     text = "Today Earning",
                                     fontSize = 11.sp,
-                                    color = TextDarkSecondary,
+                                    color = Color(0xFFBCCBE8),
                                     maxLines = 1
                                 )
                             }
                         }
+                    }
+                }
+            }
+            // SMARTDRIVO_REFERENCE_UI_V2
+            // UI only. Existing assistant state and action retained.
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            handleToggleAutoAccept(
+                                !settings.isAutoAcceptActive
+                            )
+                        },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF101A33)
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (settings.isAutoAcceptActive)
+                            Color(0xFF857AFF)
+                        else
+                            Color(0xFF405078)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors =
+                                        if (settings.isAutoAcceptActive)
+                                            listOf(
+                                                Color(0xFF283E79),
+                                                Color(0xFF142441)
+                                            )
+                                        else
+                                            listOf(
+                                                Color(0xFF202E50),
+                                                Color(0xFF111C33)
+                                            )
+                                )
+                            )
+                            .padding(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "SMARTDRIVO ASSISTANT",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFC4BFFF)
+                            )
+
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            Surface(
+                                shape = RoundedCornerShape(30.dp),
+                                color =
+                                    if (settings.isAutoAcceptActive)
+                                        Color(0xFF1E705A)
+                                    else
+                                        Color(0xFF354461)
+                            ) {
+                                Text(
+                                    text =
+                                        if (settings.isAutoAcceptActive)
+                                            "ACTIVE"
+                                        else
+                                            "PAUSED",
+                                    modifier = Modifier.padding(
+                                        horizontal = 10.dp,
+                                        vertical = 5.dp
+                                    ),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(9.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(
+                                        Color(0xFF394D85),
+                                        RoundedCornerShape(14.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ElectricBolt,
+                                    contentDescription = null,
+                                    tint = Color(0xFFDED9FF),
+                                    modifier = Modifier.size(27.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Smart Assistance",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+
+                                Text(
+                                    text =
+                                        if (settings.isAutoAcceptActive)
+                                            "Auto-Accept enabled"
+                                        else
+                                            "Auto-Accept paused",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFCAD3EB)
+                                )
+                            }
+
+                            Switch(
+                                checked = settings.isAutoAcceptActive,
+                                onCheckedChange = { enabled ->
+                                    handleToggleAutoAccept(enabled)
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF7668F7),
+                                    uncheckedThumbColor = Color.White,
+                                    uncheckedTrackColor = Color(0xFF64708E)
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(9.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    Color(0xFF6255E9),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .padding(vertical = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ElectricBolt,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Text(
+                                text =
+                                    if (settings.isAutoAcceptActive)
+                                        "STOP ASSISTANCE"
+                                    else
+                                        "START ASSISTANCE",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+
+            // SMARTDRIVO_HOME_ALIGNMENT_V3
+            // AUTO REJECT NO CONDITION MATCH — SEPARATE CARD
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // AUTO_REJECT_CARD_CLICK_V2
+                        .clickable {
+                            val enabled = !settings.isAutoRejectBadFaresEnabled
+                            prefs.saveAppSettings(
+                                settings.copy(
+                                    isAutoRejectBadFaresEnabled = enabled
+                                )
+                            )
+
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    if (enabled)
+                                        "Auto Reject No Condition Match ON"
+                                    else
+                                        "Auto Reject No Condition Match OFF - Manual mode"
+                                )
+                            }
+                        },
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF1C2B4B)
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (settings.isAutoRejectBadFaresEnabled)
+                            Color(0xFFFF849C)
+                        else
+                            Color(0xFF455A85)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .background(
+                                    if (settings.isAutoRejectBadFaresEnabled)
+                                        Color(0xFF55344D)
+                                    else
+                                        Color(0xFF304365),
+                                    RoundedCornerShape(8.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "⛔",
+                                fontSize = 15.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(9.dp))
+
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Auto Reject No Condition Match",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1
+                            )
+
+                            Text(
+                                text = if (settings.isAutoRejectBadFaresEnabled)
+                                    "ACTIVE • Skip orders that fail saved conditions"
+                                else
+                                    "INACTIVE • Manual action",
+                                fontSize = 10.sp,
+                                color = if (settings.isAutoRejectBadFaresEnabled)
+                                    Color(0xFFFF8BA2)
+                                else
+                                    Color(0xFFBCCBE8),
+                                maxLines = 1
+                            )
+                        }
+
+                        Switch(
+                            checked = settings.isAutoRejectBadFaresEnabled,
+                            onCheckedChange = { enabled ->
+                                prefs.saveAppSettings(
+                                    settings.copy(
+                                        isAutoRejectBadFaresEnabled = enabled
+                                    )
+                                )
+
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        if (enabled)
+                                            "Auto Reject No Condition Match ON ✓"
+                                        else
+                                            "Auto Reject No Condition Match OFF • Manual mode"
+                                    )
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFFFF8BA2),
+                                uncheckedThumbColor = Color.White,
+                                uncheckedTrackColor = Color(0xFFBDBDBD)
+                            )
+                        )
                     }
                 }
             }
@@ -878,201 +1172,6 @@ val goToAreas by prefs.goToAreas.collectAsState()
                 }
             }
 
-            // 2. AUTO-ACCEPT ORDERS — COMPACT V2
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            handleToggleAutoAccept(!settings.isAutoAcceptActive)
-                        },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (settings.isAutoAcceptActive) StatusActiveGreenBg else StatusInactiveRedBg
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        if (settings.isAutoAcceptActive) StatusActiveGreenBorder else StatusInactiveRedBorder
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .background(
-                                    if (settings.isAutoAcceptActive) Color(0xFFDCFCE7) else Color(0xFFFFEBEE),
-                                    RoundedCornerShape(8.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.ElectricBolt,
-                                contentDescription = null,
-                                tint = if (settings.isAutoAcceptActive) StatusActiveGreen else StatusInactiveRed,
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(9.dp))
-
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Auto-Accept Orders",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextDarkPrimary,
-                                maxLines = 1
-                            )
-                            Text(
-                                text = if (settings.isAutoAcceptActive)
-                                    "ACTIVE • Ready"
-                                else
-                                    "INACTIVE • Paused",
-                                fontSize = 11.sp,
-                                color = if (settings.isAutoAcceptActive) StatusActiveGreen else TextDarkSecondary,
-                                maxLines = 1
-                            )
-                        }
-
-                        Switch(
-                            checked = settings.isAutoAcceptActive,
-                            onCheckedChange = { shouldEnable ->
-                                handleToggleAutoAccept(shouldEnable)
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = BluePrimary,
-                                uncheckedThumbColor = Color.White,
-                                uncheckedTrackColor = Color(0xFFBDBDBD)
-                            )
-                        )
-                    }
-                }
-            }
-            // AUTO REJECT NO CONDITION MATCH — SEPARATE CARD
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        // AUTO_REJECT_CARD_CLICK_V2
-                        .clickable {
-                            val enabled = !settings.isAutoRejectBadFaresEnabled
-                            prefs.saveAppSettings(
-                                settings.copy(
-                                    isAutoRejectBadFaresEnabled = enabled
-                                )
-                            )
-
-                            coroutineScope.launch {
-                                snackbarHostState.showSnackbar(
-                                    if (enabled)
-                                        "Auto Reject No Condition Match ON"
-                                    else
-                                        "Auto Reject No Condition Match OFF - Manual mode"
-                                )
-                            }
-                        },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (settings.isAutoRejectBadFaresEnabled)
-                            Color(0xFFFFF1F2)
-                        else
-                            Color.White
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        if (settings.isAutoRejectBadFaresEnabled)
-                            Color(0xFFFCA5A5)
-                        else
-                            CardBorderDefault
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .background(
-                                    if (settings.isAutoRejectBadFaresEnabled)
-                                        Color(0xFFFFE4E6)
-                                    else
-                                        Color(0xFFF1F5F9),
-                                    RoundedCornerShape(8.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "⛔",
-                                fontSize = 15.sp
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(9.dp))
-
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Auto Reject No Condition Match",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextDarkPrimary,
-                                maxLines = 1
-                            )
-
-                            Text(
-                                text = if (settings.isAutoRejectBadFaresEnabled)
-                                    "ACTIVE • Skip orders that fail saved conditions"
-                                else
-                                    "INACTIVE • Manual action",
-                                fontSize = 10.sp,
-                                color = if (settings.isAutoRejectBadFaresEnabled)
-                                    StatusInactiveRed
-                                else
-                                    TextDarkSecondary,
-                                maxLines = 1
-                            )
-                        }
-
-                        Switch(
-                            checked = settings.isAutoRejectBadFaresEnabled,
-                            onCheckedChange = { enabled ->
-                                prefs.saveAppSettings(
-                                    settings.copy(
-                                        isAutoRejectBadFaresEnabled = enabled
-                                    )
-                                )
-
-                                coroutineScope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        if (enabled)
-                                            "Auto Reject No Condition Match ON ✓"
-                                        else
-                                            "Auto Reject No Condition Match OFF • Manual mode"
-                                    )
-                                }
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = StatusInactiveRed,
-                                uncheckedThumbColor = Color.White,
-                                uncheckedTrackColor = Color(0xFFBDBDBD)
-                            )
-                        )
-                    }
-                }
-            }
             // HOME_FILTER_COMPACT_V1
             // ORDER_FILTER_1_UI_V1
             // Same compact visual family as Order Filter 2 / 3.
@@ -1081,24 +1180,17 @@ val goToAreas by prefs.goToAreas.collectAsState()
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor =
-                            if (settings.isPrimaryFilterEnabled)
-                                BlueContainer
-                            else
-                                CardBackground
+                        containerColor = Color(0xFF1C2B4B)
                     ),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(
                         1.dp,
-                        if (settings.isPrimaryFilterEnabled)
-                            BluePrimary
-                        else
-                            CardBorderDefault
+                        if (settings.isPrimaryFilterEnabled) Color(0xFF8275FF) else Color(0xFF455A85)
                     )
                 ) {
                     Column(
-                        modifier = Modifier.padding(9.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                        modifier = Modifier.padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
 
                         // Header
@@ -1112,48 +1204,12 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             Column(
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Row(
-                                    verticalAlignment =
-                                        Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .background(
-                                                Color.White.copy(
-                                                    alpha = 0.75f
-                                                ),
-                                                RoundedCornerShape(8.dp)
-                                            )
-                                            .padding(
-                                                horizontal = 7.dp,
-                                                vertical = 3.dp
-                                            )
-                                    ) {
-                                        Text(
-                                            text = "FILTER 1",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color =
-                                                if (settings.isPrimaryFilterEnabled)
-                                                    BluePrimary
-                                                else
-                                                    TextDarkSecondary
-                                        )
-                                    }
-
-                                    Spacer(
-                                        modifier =
-                                            Modifier.width(7.dp)
-                                    )
-
-                                    Text(
-                                        text = "Order Filter 1",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = TextDarkPrimary
-                                    )
-                                }
-
+                                Text(
+                                    text = "Global Filter",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    color = Color.White
+                                )
                                 Spacer(
                                     modifier =
                                         Modifier.height(2.dp)
@@ -1162,7 +1218,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                 Text(
                                     text = "One ride option",
                                     fontSize = 10.sp,
-                                    color = TextDarkSecondary
+                                    color = Color(0xFFBCCBE8)
                                 )
                             }
 
@@ -1182,7 +1238,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         if (settings.isPrimaryFilterEnabled)
                                             BluePrimary
                                         else
-                                            TextDarkSecondary
+                                            Color(0xFFBCCBE8)
                                 )
 
                                 Spacer(
@@ -1205,9 +1261,9 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             snackbarHostState
                                                 .showSnackbar(
                                                     if (enabled)
-                                                        "Order Filter 1 ON"
+                                                        "Global Filter ON"
                                                     else
-                                                        "Order Filter 1 OFF"
+                                                        "Global Filter OFF"
                                                 )
                                         }
                                     },
@@ -1231,9 +1287,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    Color.White.copy(
-                                        alpha = 0.72f
-                                    ),
+                                    Color(0xFF304365),
                                     RoundedCornerShape(11.dp)
                                 )
                                 .padding(3.dp),
@@ -1254,7 +1308,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             BlueSecondary
 
                                         FilterMode.BOTH ->
-                                            StatusActiveGreen
+                                            Color(0xFF7868F4)
                                     }
 
                                 Box(
@@ -1283,10 +1337,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                                     true
                                             }
                                         }
-                                        .padding(
-                                            vertical = 6.dp,
-                                            horizontal = 3.dp
-                                        ),
+                                        .padding(vertical = 4.dp, horizontal = 3.dp),
                                     contentAlignment =
                                         Alignment.Center
                                 ) {
@@ -1313,7 +1364,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                             if (isSelected) {
                                                 Color.White
                                             } else {
-                                                TextDarkSecondary
+                                                Color(0xFFBCCBE8)
                                             },
                                         maxLines = 1
                                     )
@@ -1390,16 +1441,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         colors =
                                             OutlinedTextFieldDefaults
                                                 .colors(
-                                                    focusedBorderColor =
-                                                        BluePrimary,
-                                                    focusedLabelColor =
-                                                        BluePrimary,
-                                                    unfocusedBorderColor =
-                                                        CardBorderDefault,
-                                                    focusedTextColor =
-                                                        TextDarkPrimary,
-                                                    unfocusedTextColor =
-                                                        TextDarkPrimary
+                                                    focusedBorderColor = Color(0xFFB7AEFF),
+                                                    focusedLabelColor = Color(0xFFD5CEFF), unfocusedLabelColor = Color(0xFFCCD6ED),
+                                                    unfocusedBorderColor = Color(0xFF54688C),
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
                                                 )
                                     )
 
@@ -1442,16 +1488,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         colors =
                                             OutlinedTextFieldDefaults
                                                 .colors(
-                                                    focusedBorderColor =
-                                                        BluePrimary,
-                                                    focusedLabelColor =
-                                                        BluePrimary,
-                                                    unfocusedBorderColor =
-                                                        CardBorderDefault,
-                                                    focusedTextColor =
-                                                        TextDarkPrimary,
-                                                    unfocusedTextColor =
-                                                        TextDarkPrimary
+                                                    focusedBorderColor = Color(0xFFB7AEFF),
+                                                    focusedLabelColor = Color(0xFFD5CEFF), unfocusedLabelColor = Color(0xFFCCD6ED),
+                                                    unfocusedBorderColor = Color(0xFF54688C),
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
                                                 )
                                     )
                                 }
@@ -1506,16 +1547,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         colors =
                                             OutlinedTextFieldDefaults
                                                 .colors(
-                                                    focusedBorderColor =
-                                                        BluePrimary,
-                                                    focusedLabelColor =
-                                                        BluePrimary,
-                                                    unfocusedBorderColor =
-                                                        CardBorderDefault,
-                                                    focusedTextColor =
-                                                        TextDarkPrimary,
-                                                    unfocusedTextColor =
-                                                        TextDarkPrimary
+                                                    focusedBorderColor = Color(0xFFB7AEFF),
+                                                    focusedLabelColor = Color(0xFFD5CEFF), unfocusedLabelColor = Color(0xFFCCD6ED),
+                                                    unfocusedBorderColor = Color(0xFF54688C),
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
                                                 )
                                     )
 
@@ -1558,16 +1594,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         colors =
                                             OutlinedTextFieldDefaults
                                                 .colors(
-                                                    focusedBorderColor =
-                                                        BluePrimary,
-                                                    focusedLabelColor =
-                                                        BluePrimary,
-                                                    unfocusedBorderColor =
-                                                        CardBorderDefault,
-                                                    focusedTextColor =
-                                                        TextDarkPrimary,
-                                                    unfocusedTextColor =
-                                                        TextDarkPrimary
+                                                    focusedBorderColor = Color(0xFFB7AEFF),
+                                                    focusedLabelColor = Color(0xFFD5CEFF), unfocusedLabelColor = Color(0xFFCCD6ED),
+                                                    unfocusedBorderColor = Color(0xFF54688C),
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
                                                 )
                                     )
                                 }
@@ -1622,16 +1653,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         colors =
                                             OutlinedTextFieldDefaults
                                                 .colors(
-                                                    focusedBorderColor =
-                                                        BluePrimary,
-                                                    focusedLabelColor =
-                                                        BluePrimary,
-                                                    unfocusedBorderColor =
-                                                        CardBorderDefault,
-                                                    focusedTextColor =
-                                                        TextDarkPrimary,
-                                                    unfocusedTextColor =
-                                                        TextDarkPrimary
+                                                    focusedBorderColor = Color(0xFFB7AEFF),
+                                                    focusedLabelColor = Color(0xFFD5CEFF), unfocusedLabelColor = Color(0xFFCCD6ED),
+                                                    unfocusedBorderColor = Color(0xFF54688C),
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
                                                 )
                                     )
 
@@ -1674,16 +1700,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         colors =
                                             OutlinedTextFieldDefaults
                                                 .colors(
-                                                    focusedBorderColor =
-                                                        BluePrimary,
-                                                    focusedLabelColor =
-                                                        BluePrimary,
-                                                    unfocusedBorderColor =
-                                                        CardBorderDefault,
-                                                    focusedTextColor =
-                                                        TextDarkPrimary,
-                                                    unfocusedTextColor =
-                                                        TextDarkPrimary
+                                                    focusedBorderColor = Color(0xFFB7AEFF),
+                                                    focusedLabelColor = Color(0xFFD5CEFF), unfocusedLabelColor = Color(0xFFCCD6ED),
+                                                    unfocusedBorderColor = Color(0xFF54688C),
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
                                                 )
                                     )
 
@@ -1731,16 +1752,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         colors =
                                             OutlinedTextFieldDefaults
                                                 .colors(
-                                                    focusedBorderColor =
-                                                        BluePrimary,
-                                                    focusedLabelColor =
-                                                        BluePrimary,
-                                                    unfocusedBorderColor =
-                                                        CardBorderDefault,
-                                                    focusedTextColor =
-                                                        TextDarkPrimary,
-                                                    unfocusedTextColor =
-                                                        TextDarkPrimary
+                                                    focusedBorderColor = Color(0xFFB7AEFF),
+                                                    focusedLabelColor = Color(0xFFD5CEFF), unfocusedLabelColor = Color(0xFFCCD6ED),
+                                                    unfocusedBorderColor = Color(0xFF54688C),
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
                                                 )
                                     )
 
@@ -1783,16 +1799,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                                         colors =
                                             OutlinedTextFieldDefaults
                                                 .colors(
-                                                    focusedBorderColor =
-                                                        BluePrimary,
-                                                    focusedLabelColor =
-                                                        BluePrimary,
-                                                    unfocusedBorderColor =
-                                                        CardBorderDefault,
-                                                    focusedTextColor =
-                                                        TextDarkPrimary,
-                                                    unfocusedTextColor =
-                                                        TextDarkPrimary
+                                                    focusedBorderColor = Color(0xFFB7AEFF),
+                                                    focusedLabelColor = Color(0xFFD5CEFF), unfocusedLabelColor = Color(0xFFCCD6ED),
+                                                    unfocusedBorderColor = Color(0xFF54688C),
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
                                                 )
                                     )
                                 }
@@ -1861,7 +1872,7 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(44.dp)
+                                .height(40.dp)
                                 .testTag(
                                     "save_settings_button"
                                 ),
@@ -1888,102 +1899,11 @@ val goToAreas by prefs.goToAreas.collectAsState()
                             )
 
                             Text(
-                                text = "Save Order Filter 1",
+                                text = "Save Global Filter",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp
                             )
                         }
-                    }
-                }
-            }
-            // 7. Area Rules Engine card — COMPACT
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onNavigateToAreaManager() },
-                    colors = CardDefaults.cardColors(containerColor = CardBackground),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, CardBorderDefault)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .background(BlueContainer, RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Map,
-                                contentDescription = null,
-                                tint = BlueSecondary,
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(9.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Area Rules Engine",
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextDarkPrimary,
-                                    fontSize = 14.sp,
-                                    maxLines = 1
-                                )
-
-                                Spacer(modifier = Modifier.width(6.dp))
-
-                                Surface(
-                                    shape = RoundedCornerShape(7.dp),
-                                    color = if (activeAreaFilterCount > 0)
-                                        Color(0xFFDCFCE7)
-                                    else
-                                        Color(0xFFF1F5F9),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (activeAreaFilterCount > 0)
-                                            Color(0xFF86EFAC)
-                                        else
-                                            Color(0xFFE2E8F0)
-                                    )
-                                ) {
-                                    Text(
-                                        text = "$activeAreaFilterCount Active",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (activeAreaFilterCount > 0)
-                                            Color(0xFF15803D)
-                                        else
-                                            Color(0xFF64748B),
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                    )
-                                }
-                            }
-
-                            Text(
-                                text = if (activeAreaFilterCount > 0)
-                                    "$activeGoToCount Go-To • $activeNoGoCount No-Go"
-                                else
-                                    "No active area rules",
-                                color = TextDarkSecondary,
-                                fontSize = 11.sp,
-                                maxLines = 1
-                            )
-                        }
-
-                        Icon(
-                            Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = TextDarkSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
                     }
                 }
             }

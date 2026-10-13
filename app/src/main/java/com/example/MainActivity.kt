@@ -11,6 +11,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
@@ -47,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -663,8 +665,8 @@ fun SmartDrivoApp(
                         thickness = 1.dp
                     )
                     NavigationBar(
-                        containerColor = if (isDarkNavyScreen) Color(0xFF0A1628) else Color.White,
-                        contentColor = if (isDarkNavyScreen) Color.White else TextDarkPrimary,
+                        containerColor = Color(0xFF101A33),
+                        contentColor = Color.White,
                         tonalElevation = 0.dp
                     ) {
                         bottomNavItems.forEach { item ->
@@ -678,6 +680,11 @@ fun SmartDrivoApp(
                                     !isMembershipActive &&
                                     item.route != Routes.PROFILE
 
+                            val navScale by animateFloatAsState(
+                                targetValue = if (isSelected) 1.10f else 1f,
+                                animationSpec = tween(180),
+                                label = "smartdrivoNav"
+                            )
                             NavigationBarItem(
                                 icon = {
                                     Icon(
@@ -691,7 +698,10 @@ fun SmartDrivoApp(
                                                 "${item.label} locked"
                                             else
                                                 item.label,
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(24.dp).graphicsLayer {
+                                            scaleX = navScale
+                                            scaleY = navScale
+                                        }
                                     )
                                 },
                                 label = {
@@ -699,7 +709,7 @@ fun SmartDrivoApp(
                                         text = item.label,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         fontSize = 12.sp,
-                                        color = if (isSelected) BluePrimary else if (isDarkNavyScreen) Color(0xFF94A3B8) else TextDarkTertiary
+                                        color = if (isSelected) Color(0xFFE0DBFF) else Color(0xFF9BABCD)
                                     )
                                 },
                                 selected = isSelected,
@@ -715,11 +725,11 @@ fun SmartDrivoApp(
                                     }
                                 },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = BluePrimary,
-                                    selectedTextColor = BluePrimary,
-                                    indicatorColor = if (isDarkNavyScreen) Color(0xFF132238) else BlueContainer,
-                                    unselectedIconColor = if (isDarkNavyScreen) Color(0xFF94A3B8) else TextDarkTertiary,
-                                    unselectedTextColor = if (isDarkNavyScreen) Color(0xFF94A3B8) else TextDarkTertiary
+                                    selectedIconColor = Color(0xFFE0DBFF),
+                                    selectedTextColor = Color(0xFFE0DBFF),
+                                    indicatorColor = Color(0xFF34456D),
+                                    unselectedIconColor = Color(0xFF9BABCD),
+                                    unselectedTextColor = Color(0xFF9BABCD)
                                 )
                             )
                         }
