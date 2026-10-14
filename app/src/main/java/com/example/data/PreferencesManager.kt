@@ -1239,7 +1239,10 @@ class PreferencesManager(private val context: Context) {
             maxFare = obj.optDouble("maxFare", 0.0).toFloat(),
             minPickupKm = obj.optDouble("minPickupKm", 0.5).toFloat(),
             maxPickupKm = obj.optDouble("maxPickupKm", 3.0).toFloat(),
-            maxDropKm = obj.optDouble("maxDropKm", 7.5).toFloat()
+            maxDropKm = obj.optDouble("maxDropKm", 7.5).toFloat(),
+            // SMARTDRIVO_AREA_PERSISTENCE_V1
+            // Restore every saved destination's fare/pickup/drop limits.
+            areas = areaEntries
         )
     }
 

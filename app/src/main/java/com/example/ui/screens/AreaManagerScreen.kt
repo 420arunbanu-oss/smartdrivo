@@ -300,6 +300,40 @@ fun AreaManagerScreen(
                 }
             }
 
+            // SMARTDRIVO_AREA_GUIDE_V1
+            // Display-only explanation of existing AreaRulesEngine priority.
+            item {
+                Surface(
+                    color = if (selectedType == AreaType.GO_TO) {
+                        GoToGreenBg.copy(alpha = 0.65f)
+                    } else {
+                        NoGoRedBg.copy(alpha = 0.65f)
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (selectedType == AreaType.GO_TO) {
+                            "WHEN ON: Only saved GO TO destinations and their Fare/Pickup/Drop limits apply. Regular numeric filters are skipped. Enabled NO GO blocks first."
+                        } else {
+                            "WHEN ON: Saved blocked DROP destinations are rejected, even if other filters match. Pickup location does not trigger NO GO."
+                        },
+                        modifier = Modifier.padding(
+                            horizontal = 10.dp,
+                            vertical = 8.dp
+                        ),
+                        fontSize = 10.sp,
+                        lineHeight = 15.sp,
+                        color = if (selectedType == AreaType.GO_TO) {
+                            GoToGreen
+                        } else {
+                            NoGoRed
+                        },
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
             if (visibleGroups.isEmpty()) {
                 item {
                     Card(
@@ -721,7 +755,7 @@ private fun CompactAreaGroupCard(
                             )
                         },
                     modifier =
-                        Modifier.fillMaxWidth()
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp)
                 ) {
 
                     Text(
@@ -747,111 +781,74 @@ private fun CompactAreaGroupCard(
                 }
             }
 
-            // Go-To rules / No-Go rule
-            if (isGoTo) {
+            // SMARTDRIVO_AREA_CARD_COMPACT_V1
+            // Same compact info row height for GO TO and NO GO.
+            // This is presentation only; no matching rules are changed.
 
-                val goToMinFare =
-                    if (group.maxFare > 0f) {
-                        group.maxFare
-                    } else {
-                        group.minFare
-                    }
-
-                Text(
-                    text =
-                        "Fare + Pickup + Drop area rules",
-                    fontSize = 10.sp,
-                    fontWeight =
-                        FontWeight.SemiBold,
-                    color =
-                        if (group.isEnabled) {
-                            accent
-                        } else {
-                            Color(0xFF64748B)
-                        }
-                )
-
-                Surface(
-                    color =
-                        Color.White.copy(
-                            alpha =
-                                if (group.isEnabled) {
-                                    0.65f
-                                } else {
-                                    1f
-                                }
-                        ),
-                    shape =
-                        RoundedCornerShape(10.dp),
-                    border =
-                        if (group.isEnabled) {
-                            null
-                        } else {
-                            BorderStroke(
-                                1.dp,
-                                Color(0xFFE2E8F0)
-                            )
-                        },
-                    modifier =
-                        Modifier.fillMaxWidth()
-                ) {
-
-                    Text(
-                        text =
-                            "Min Fare: ${
-                                if (goToMinFare > 0f) {
-                                    "\u20B9${goToMinFare.toInt()}"
-                                } else {
-                                    "No minimum"
-                                }
-                            }   |   Pickup: ${
-                                if (group.maxPickupKm > 0f) {
-                                    "${group.maxPickupKm} km"
-                                } else {
-                                    "No limit"
-                                }
-                            }   |   Drop: ${
-                                if (group.maxDropKm > 0f) {
-                                    "${group.maxDropKm} km"
-                                } else {
-                                    "No limit"
-                                }
-                            }",
-                        modifier =
-                            Modifier.padding(
-                                horizontal = 9.dp,
-                                vertical = 7.dp
-                            ),
-                        fontSize = 10.sp,
-                        fontWeight =
-                            FontWeight.Medium,
-                        color =
-                            if (group.isEnabled) {
-                                accent
-                            } else {
-                                Color(0xFF64748B)
-                            },
-                        maxLines = 2
-                    )
-                }
-
+            val areaMinFare = if (group.maxFare > 0f) {
+                group.maxFare
             } else {
-
-                Text(
-                    text =
-                        "Matching destination areas will be blocked",
-                    fontSize = 10.sp,
-                    fontWeight =
-                        FontWeight.SemiBold,
-                    color =
-                        if (group.isEnabled) {
-                            accent
-                        } else {
-                            Color(0xFF64748B)
-                        }
-                )
+                group.minFare
             }
 
+            val ruleSummary = if (isGoTo) {
+                val fareText = if (areaMinFare > 0f) {
+                    "\u20B9${areaMinFare.toInt()}"
+                } else {
+                    "Any"
+                }
+
+                val pickupText = if (group.maxPickupKm > 0f) {
+                    "${group.maxPickupKm}km"
+                } else {
+                    "Any"
+                }
+
+                val dropText = if (group.maxDropKm > 0f) {
+                    "${group.maxDropKm}km"
+                } else {
+                    "Any"
+                }
+
+                "Fare $fareText  |  P $pickupText  |  D $dropText"
+            } else {
+                "DROP matching only  |  Block when ON"
+            }
+
+            Surface(
+                color = Color.White.copy(
+                    alpha = if (group.isEnabled) 0.72f else 1f
+                ),
+                shape = RoundedCornerShape(10.dp),
+                border = if (group.isEnabled) {
+                    null
+                } else {
+                    BorderStroke(
+                        1.dp,
+                        Color(0xFFE2E8F0)
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(34.dp)
+            ) {
+                Text(
+                    text = ruleSummary,
+                    modifier = Modifier.padding(
+                        horizontal = 9.dp,
+                        vertical = 8.dp
+                    ),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (group.isEnabled) {
+                        accent
+                    } else {
+                        Color(0xFF64748B)
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             // Edit and delete
             Row(
                 modifier =

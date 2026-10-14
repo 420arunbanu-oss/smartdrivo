@@ -571,11 +571,11 @@ fun SettingsScreen(
                     title = "Order Filter Unlimited",
                     plus = false,
                     rules = settings.extraFareRules,
-                    onRulesChange = { updated ->
+                    onRulesChange = { updated, notifySaved ->
                         prefs.saveAppSettings(
                             prefs.appSettings.value.copy(extraFareRules = updated)
                         )
-                        showSavedSnackbar()
+                        if (notifySaved) showSavedSnackbar()
                     }
                 )
 
@@ -587,11 +587,11 @@ fun SettingsScreen(
                     title = "+ Amount Filter Unlimited",
                     plus = true,
                     rules = settings.extraPlusAmountRules,
-                    onRulesChange = { updated ->
+                    onRulesChange = { updated, notifySaved ->
                         prefs.saveAppSettings(
                             prefs.appSettings.value.copy(extraPlusAmountRules = updated)
                         )
-                        showSavedSnackbar()
+                        if (notifySaved) showSavedSnackbar()
                     }
                 )
 
