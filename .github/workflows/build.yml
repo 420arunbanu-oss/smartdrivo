@@ -2,7 +2,7 @@ name: Build SmartDrivo APK
 
 on:
   push:
-    branches: [ main, smartdrivo-device-lock-free-20261011-112401 ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -22,22 +22,13 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Generate Gradle Wrapper
-        run: gradle wrapper --gradle-version 9.3.1
-
-      - name: Build Debug APK
+      - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-configuration-cache
+          ./gradlew assembleDebug --stacktrace
 
-      - name: Prepare Final APK
-        shell: bash
-        run: |
-          cp app/build/outputs/apk/debug/app-debug.apk "SmartDrivo-Debug.apk"
-          test -f "SmartDrivo-Debug.apk"
-
-      - name: Upload Debug APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SmartDrivo-Debug-APK
-          path: SmartDrivo-Debug.apk
+          name: SmartDrivo-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
