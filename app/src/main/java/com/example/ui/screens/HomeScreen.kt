@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -83,6 +86,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -405,7 +409,16 @@ val goToAreas by prefs.goToAreas.collectAsState()
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                // SMARTDRIVO_KEYBOARD_SAFE_V2
+                .imePadding()
                 .padding(horizontal = 16.dp),
+            // SMARTDRIVO_KEYBOARD_GAP_V3
+            // Keep normal scroll room; reduce it while typing.
+            contentPadding = PaddingValues(
+                bottom = if (
+                    WindowInsets.ime.getBottom(LocalDensity.current) > 0
+                ) 8.dp else 48.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { Spacer(modifier = Modifier.height(2.dp)) }

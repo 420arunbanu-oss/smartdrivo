@@ -15,6 +15,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -47,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -632,7 +635,12 @@ fun SmartDrivoApp(
 
     Scaffold(
         bottomBar = {
-            if (showBottomBar) {
+            // SMARTDRIVO_KEYBOARD_GAP_V3
+            // Only Home tabs hide during keyboard input.
+            val hideHomeTabsForKeyboard =
+                currentRoute == Routes.HOME &&
+                    WindowInsets.ime.getBottom(LocalDensity.current) > 0
+            if (showBottomBar && !hideHomeTabsForKeyboard) {
                 Column {
                     HorizontalDivider(
                         color = if (isDarkNavyScreen) Color(0xFF1E324F) else CardBorderDefault,
@@ -681,12 +689,31 @@ fun SmartDrivoApp(
                                 selected = isSelected,
                                 onClick = {
                                     if (currentRoute != item.route) {
-                                        navController.navigate(item.route) {
-                                            popUpTo(Routes.HOME) {
-                                                saveState = true
+                                        // SMARTDRIVO_HOME_NAV_RETURN_V1
+                                        // Return to existing Home rather than
+                                        // restoring a second Home destination.
+                                        if (item.route == Routes.HOME) {
+                                            val returnedHome = navController.popBackStack(
+                                                Routes.HOME,
+                                                false
+                                            )
+
+                                            if (!returnedHome) {
+                                                navController.navigate(Routes.HOME) {
+                                                    launchSingleTop = true
+                                                    restoreState = false
+                                                }
                                             }
-                                            launchSingleTop = true
-                                            restoreState = true
+                                        } else {
+                                            // Preserve existing navigation
+                                            // behavior for all other tabs.
+                                            navController.navigate(item.route) {
+                                                popUpTo(Routes.HOME) {
+                                                    saveState = true
+                                                }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
                                         }
                                     }
                                 },
