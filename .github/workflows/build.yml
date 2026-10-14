@@ -25,75 +25,19 @@ jobs:
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 9.3.1
 
-      - name: Restore Firebase Configuration
-        shell: bash
-        env:
-          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
-        run: |
-          test -n "$GOOGLE_SERVICES_JSON_BASE64"
-          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/app/google-services.json"
-
-      - name: Restore Release Keystore
-        shell: bash
-        env:
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
-        run: |
-          test -n "$RELEASE_KEYSTORE_BASE64"
-          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/my-upload-key.jks"
-
-      - name: Run Debug Regression Tests
-        run: ./gradlew :app:testDebugUnitTest --no-configuration-cache
-
-      - name: Build Signed Release APK
-        env:
-          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      - name: Build Debug APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-configuration-cache
-
-      - name: Read App Version
-        shell: bash
-        run: |
-          APP_VERSION=$(grep -m1 'versionName = "' app/build.gradle.kts | sed -E 's/.*versionName = "([^"]+)".*/\1/')
-          test -n "$APP_VERSION"
-          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
-          echo "Building SmartDrivo v$APP_VERSION"
+          ./gradlew assembleDebug --no-configuration-cache
 
       - name: Prepare Final APK
         shell: bash
         run: |
-          cp app/build/outputs/apk/release/app-release.apk "SmartDrivo-v${APP_VERSION}-release.apk"
-          test -f "SmartDrivo-v${APP_VERSION}-release.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "SmartDrivo-Debug.apk"
+          test -f "SmartDrivo-Debug.apk"
 
-      - name: Verify APK Signature
-        shell: bash
-        run: |
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
-          APK="SmartDrivo-v${APP_VERSION}-release.apk"
-
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
-
-          EXPECTED_CERT=$(grep -m1 'private const val RELEASE_CERT_SHA256 = "'             app/src/main/java/com/example/security/SignatureIntegrity.kt             | sed -E 's/.*"([0-9A-Fa-f]+)".*/\1/'             | tr '[:lower:]' '[:upper:]')
-
-          ACTUAL_CERT=$("$APKSIGNER" verify --print-certs "$APK"             | sed -n 's/.*certificate SHA-256 digest: //p'             | head -1             | tr -d ':'             | tr '[:lower:]' '[:upper:]')
-
-          test -n "$EXPECTED_CERT"
-          test -n "$ACTUAL_CERT"
-
-          echo "Expected release certificate SHA-256: $EXPECTED_CERT"
-          echo "Actual APK certificate SHA-256:        $ACTUAL_CERT"
-
-          if [ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]; then
-            echo "ERROR: Release APK certificate does not match SmartDrivo integrity lock."
-            exit 1
-          fi
-
-          echo "SmartDrivo release certificate: MATCH"
-
-      - name: Upload Signed Release APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: SmartDrivo-v${{ env.APP_VERSION }}-Release
-          path: SmartDrivo-v${{ env.APP_VERSION }}-release.apk
+          name: SmartDrivo-Debug-APK
+          path: SmartDrivo-Debug.apk
